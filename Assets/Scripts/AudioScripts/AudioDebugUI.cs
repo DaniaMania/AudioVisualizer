@@ -4,6 +4,8 @@ using UnityEngine.InputSystem;
 public class AudioDebugUI : MonoBehaviour
 {
     [SerializeField] private Key toggleKey = Key.F1;
+    
+    public MinimapController minimap;
 
     private GUIStyle headerStyle;
     private GUIStyle rowStyle;
@@ -25,7 +27,11 @@ public class AudioDebugUI : MonoBehaviour
     private void Update()
     {
         if (Keyboard.current != null && Keyboard.current[toggleKey].wasPressedThisFrame && AudioManager.Instance != null)
+        {
             AudioManager.Instance.ToggleDebug();
+            if (minimap != null)
+                minimap.gameObject.SetActive(!minimap.gameObject.activeSelf);
+        }
     }
 
     private void OnGUI()
@@ -37,7 +43,7 @@ public class AudioDebugUI : MonoBehaviour
             InitializeStyles();
 
         // Toggle button — always visible
-        string buttonLabel = AudioManager.DebugEnabled ? "Debug: ON  [F1]" : "Debug: OFF [F1]";
+        string buttonLabel = AudioManager.DebugEnabled ? $"Debug: ON [{toggleKey}]" : $"Debug: OFF [{toggleKey}]";
         if (GUI.Button(new Rect(WINDOW_X, WINDOW_Y, 145f, 26f), buttonLabel, buttonStyle))
             AudioManager.Instance.ToggleDebug();
 
