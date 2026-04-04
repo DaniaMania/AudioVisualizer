@@ -71,7 +71,7 @@ public class AudioDebugUI : MonoBehaviour
                 ? $"Map: Overview [{minimap.ToggleOverviewKey}]" 
                 : $"Map: Follow [{minimap.ToggleOverviewKey}]";
 
-            if (GUI.Button(new Rect(WINDOW_X + 155f, WINDOW_Y, 180f, 26f), mapLabel, buttonStyle))
+            if (GUI.Button(new Rect(WINDOW_X + 1720f, WINDOW_Y, 180f, 26f), mapLabel, buttonStyle))
                 minimap.ToggleOverview();
         }
 
