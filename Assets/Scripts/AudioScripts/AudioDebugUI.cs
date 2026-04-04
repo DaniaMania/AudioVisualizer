@@ -63,6 +63,17 @@ public class AudioDebugUI : MonoBehaviour
 
         float y = windowY + PADDING;
         float x = WINDOW_X + PADDING;
+        
+        // Minimap mode button
+        if (minimap != null)
+        {
+            string mapLabel = minimap.IsOverview 
+                ? $"Map: Overview [{minimap.ToggleOverviewKey}]" 
+                : $"Map: Follow [{minimap.ToggleOverviewKey}]";
+
+            if (GUI.Button(new Rect(WINDOW_X + 155f, WINDOW_Y, 180f, 26f), mapLabel, buttonStyle))
+                minimap.ToggleOverview();
+        }
 
         // Header
         GUI.Label(new Rect(x, y, COL_NAME,  ROW_HEIGHT), "Emitter",     headerStyle); x += COL_NAME;

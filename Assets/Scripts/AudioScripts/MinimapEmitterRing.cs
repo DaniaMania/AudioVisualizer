@@ -3,86 +3,139 @@ using UnityEngine;
 public class MinimapEmitterRing : MonoBehaviour
 {
     [Header("Ring Settings")]
-    public float expandSpeed = 5f;
-    public float maxRadius = 1f;
     public Color inRangeColor = Color.blue;
     public Color outOfRangeColor = Color.red;
 
-    private LineRenderer ring;
-    private float currentRadius = 0f;
-    private bool isPlaying = false;
-    private AudioSource audioSource;
-    private DebugEmitter debugEmitter;
-    private Material ringMaterial;
+    private LineRenderer pulseRing;
+    private LineRenderer staticRing;
+    private Material pulseMaterial;
+    private Material staticMaterial;
     private const int segments = 64;
 
+    private float maxRadius;
+    private float currentRadius = 0f;
+    private float expansionSpeed = 0f;
+    private int remainingPulses = 0;
+    private bool isPulsing = false;
+    private const float secondsPerPulse = 1.0f;
+
+    private AudioSource audioSource;
+    private DebugEmitter debugEmitter;
+    
     void Awake()
     {
         audioSource = GetComponent<AudioSource>();
         debugEmitter = GetComponent<DebugEmitter>();
+        maxRadius = audioSource.maxDistance;
 
-        GameObject ringObj = new GameObject("Ring");
-        ringObj.transform.SetParent(transform);
-        ringObj.transform.localPosition = Vector3.zero;
-        ringObj.layer = LayerMask.NameToLayer("Minimap");
+        pulseRing = CreateRing("PulseRing", 0.3f);
+        staticRing = CreateRing("StaticRing", 0.15f);
 
-        ring = ringObj.AddComponent<LineRenderer>();
-        ring.loop = true;
-        ring.positionCount = segments + 1;
-        ring.useWorldSpace = true;
+        pulseMaterial = CreateMaterial();
+        staticMaterial = CreateMaterial();
 
-        Shader urpUnlit = Shader.Find("Universal Render Pipeline/Unlit");
-        if (urpUnlit != null)
-        {
-            ringMaterial = new Material(urpUnlit);
-            ringMaterial.SetFloat("_Surface", 1f);
-            ringMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            ringMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            ringMaterial.SetInt("_ZWrite", 0);
-            ringMaterial.renderQueue = 3000;
-            ring.material = ringMaterial;
-        }
+        pulseRing.material = pulseMaterial;
+        staticRing.material = staticMaterial;
 
-        ring.startWidth = 0.3f;
-        ring.endWidth = 0.3f;
-        ring.enabled = false;
+        pulseRing.enabled = false;
+        staticRing.enabled = false;
     }
-
+    
     void Update()
     {
-        if (audioSource == null || debugEmitter == null) return;
+        if (debugEmitter == null || audioSource == null) return;
 
-        bool soundPlaying = audioSource.isPlaying;
-        bool inRange = debugEmitter.EffectiveVolume > 0f;
+        float dy = AudioManager.Instance?.Listener != null
+            ? AudioManager.Instance.Listener.transform.position.y - transform.position.y
+            : 0f;
 
-        if (soundPlaying && inRange)
+        float horizontalRadius = 0f;
+        if (Mathf.Abs(dy) < maxRadius)
+            horizontalRadius = Mathf.Sqrt(maxRadius * maxRadius - dy * dy);
+
+        bool playerInRange = debugEmitter.DistanceToListener <= audioSource.maxDistance;
+        Color targetColor = playerInRange ? inRangeColor : outOfRangeColor;
+
+        if (isPulsing && horizontalRadius > 0f)
         {
-            isPlaying = true;
-            ring.enabled = true;
+            staticRing.enabled = true;
+            staticMaterial?.SetColor("_BaseColor", targetColor * 0.4f);
+            staticRing.startColor = targetColor * 0.4f;
+            staticRing.endColor = targetColor * 0.4f;
+            DrawRing(staticRing, horizontalRadius);
 
-            // Determine color
-            bool playerInRange = debugEmitter.DistanceToListener <= audioSource.maxDistance;
-            Color targetColor = playerInRange ? inRangeColor : outOfRangeColor;
-            ringMaterial?.SetColor("_BaseColor", targetColor);
-            ring.startColor = targetColor;
-            ring.endColor = targetColor;
+            pulseRing.enabled = true;
+            pulseMaterial?.SetColor("_BaseColor", targetColor);
+            pulseRing.startColor = targetColor;
+            pulseRing.endColor = targetColor;
 
-            // Expand ring
-            currentRadius += expandSpeed * Time.deltaTime;
-            if (currentRadius > maxRadius)
-                currentRadius = 0f;
+            float scaledRadius = (currentRadius / maxRadius) * horizontalRadius;
+            currentRadius += expansionSpeed * Time.deltaTime;
 
-            DrawRing(currentRadius);
+            if (currentRadius >= maxRadius)
+            {
+                remainingPulses--;
+                if (remainingPulses <= 0)
+                {
+                    isPulsing = false;
+                    pulseRing.enabled = false;
+                    staticRing.enabled = false;
+                }
+                else
+                {
+                    currentRadius = 0f;
+                }
+            }
+
+            DrawRing(pulseRing, scaledRadius);
         }
         else
         {
-            ring.enabled = false;
-            currentRadius = 0f;
-            isPlaying = false;
+            pulseRing.enabled = false;
+            staticRing.enabled = false;
         }
     }
 
-    void DrawRing(float radius)
+    public void TriggerPulse(float clipLength)
+    {
+        int pulseCount = Mathf.Max(1, Mathf.RoundToInt(clipLength / secondsPerPulse));
+        expansionSpeed = maxRadius / secondsPerPulse;
+        remainingPulses = pulseCount;
+        currentRadius = 0f;
+        isPulsing = true;
+    }
+
+    LineRenderer CreateRing(string name, float width)
+    {
+        GameObject obj = new GameObject(name);
+        obj.transform.SetParent(transform);
+        obj.transform.localPosition = Vector3.zero;
+        obj.layer = LayerMask.NameToLayer("Minimap");
+
+        LineRenderer lr = obj.AddComponent<LineRenderer>();
+        lr.loop = true;
+        lr.positionCount = segments + 1;
+        lr.useWorldSpace = true;
+        lr.startWidth = width;
+        lr.endWidth = width;
+        return lr;
+    }
+
+    Material CreateMaterial()
+    {
+        Shader urpUnlit = Shader.Find("Universal Render Pipeline/Unlit");
+        if (urpUnlit == null) return null;
+
+        Material mat = new Material(urpUnlit);
+        mat.SetFloat("_Surface", 1f);
+        mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        mat.SetInt("_ZWrite", 0);
+        mat.renderQueue = 3000;
+        return mat;
+    }
+
+    void DrawRing(LineRenderer lr, float radius)
     {
         float angleStep = 360f / segments;
         Vector3 center = transform.position;
@@ -92,7 +145,7 @@ public class MinimapEmitterRing : MonoBehaviour
             float angle = Mathf.Deg2Rad * angleStep * i;
             float x = Mathf.Cos(angle) * radius;
             float z = Mathf.Sin(angle) * radius;
-            ring.SetPosition(i, new Vector3(center.x + x, center.y + 0.1f, center.z + z));
+            lr.SetPosition(i, new Vector3(center.x + x, center.y + 0.1f, center.z + z));
         }
     }
 }

@@ -19,11 +19,14 @@ public class AudioEmitter : MonoBehaviour
     public float maxPitch = 1.1f;
 
     private AudioSource audioSource;
+    private MinimapEmitterRing minimapRing;
     private float timer;
 
     void Start()
     {
         audioSource = GetComponent<AudioSource>();
+        minimapRing = GetComponent<MinimapEmitterRing>();
+        
         audioSource.loop = loop;
         audioSource.playOnAwake = false;
 
@@ -35,7 +38,11 @@ public class AudioEmitter : MonoBehaviour
                 audioSource.clip = clip;
                 ApplyRandomization();
                 if (playOnStart)
+                {
                     audioSource.Play();
+                    if (audioSource.clip != null)
+                        minimapRing?.TriggerPulse(audioSource.clip.length);
+                }
             }
         }
         else
@@ -63,6 +70,8 @@ public class AudioEmitter : MonoBehaviour
 
         ApplyRandomization();
         audioSource.PlayOneShot(clip);
+
+        minimapRing?.TriggerPulse(clip.length);
     }
 
     void ApplyRandomization()
