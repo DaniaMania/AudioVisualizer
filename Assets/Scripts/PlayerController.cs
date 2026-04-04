@@ -14,11 +14,13 @@ public class PlayerController : MonoBehaviour
     private Rigidbody rb;
     private bool isGrounded;
     private float xRotation = 0f;
+    private AudioSource audioSource;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
         Cursor.lockState = CursorLockMode.Locked;
+        audioSource = GetComponent<AudioSource>();
     }
 
     void Update()
@@ -50,6 +52,10 @@ public class PlayerController : MonoBehaviour
         {
             rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
             isGrounded = false;
+
+            AudioClip jumpClip = AudioManager.Instance.GetClip("Jump");
+            if (jumpClip != null)
+                audioSource.PlayOneShot(jumpClip);
         }
     }
 
