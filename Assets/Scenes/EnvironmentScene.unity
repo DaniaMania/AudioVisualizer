@@ -2298,8 +2298,9 @@ MonoBehaviour:
     m_ColorSpace: -1
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
-  minWidth: 0.01
-  maxWidth: 0.15
+  minLineThickness: 2
+  maxLineThickness: 8
+  waveSpeed: 6
 --- !u!114 &1510950513
 MonoBehaviour:
   m_ObjectHideFlags: 0
