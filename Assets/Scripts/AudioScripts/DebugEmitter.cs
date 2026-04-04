@@ -19,12 +19,14 @@ public class DebugEmitter : MonoBehaviour
 #if UNITY_EDITOR
     // Used to keep rings visible briefly after a clip stops so they fade rather
     // than disappearing in a single frame.
-    private float _lastPlayingWallTime = -1f;
-    private float _lastSrcTime         = 0f;
+    private float _lastPlayingWallTime    = -1f;
+    private float _lastSrcTime            = 0f;
     // Tracks the wall-clock moment this source most recently started playing so
     // the PlayOneShot ring starts at radius 0 and expands exactly once.
-    private float _playStartWallTime   = -1f;
-    private bool  _wasPlayingLastFrame = false;
+    private float _playStartWallTime      = -1f;
+    private bool  _wasPlayingLastFrame    = false;
+    // Cached clip length for PlayOneShot sources (src.clip stays null for those).
+    private float _playOneShotClipLength  = -1f;
 #endif
 
     public float EffectiveVolume { get; private set; }
@@ -179,9 +181,12 @@ public class DebugEmitter : MonoBehaviour
         float dist   = hasListener ? Vector3.Distance(emitterPos, listenerPos) : 0f;
         float effVol = ComputeEffectiveVolume(src, dist);
 
-        // Unique color per emitter — hue derived from instance ID so each emitter
-        // gets its own consistent color across all its gizmos.
-        float hue          = (Mathf.Abs(gameObject.GetInstanceID()) % 100) / 100f;
+        // Unique color per emitter — Wang hash on instance ID scatters bits so
+        // objects with similar IDs still land on very different hues, and every
+        // visual element (spheres, ring, label) shares the same color.
+        uint uid = (uint)Mathf.Abs(gameObject.GetInstanceID());
+        uid ^= uid >> 16; uid *= 0x45d9f3bu; uid ^= uid >> 16;
+        float hue          = (uid % 360u) / 360f;
         Color emitterColor = Color.HSVToRGB(hue, 0.9f, 1f);
 
         // ── Ray to listener (purple = emitter–player hearing connection) ────────
@@ -214,9 +219,37 @@ public class DebugEmitter : MonoBehaviour
         //    of cutting it off in a single frame.
         if (Application.isPlaying)
         {
-            // Detect the rising edge so the PlayOneShot ring always starts at 0
+            // Rising edge: record when this source started playing.
+            // Prefer AudioEmitter's clip label for an immediate duration estimate.
+            // If no AudioEmitter exists, keep any duration measured from a previous
+            // play so sources like the player jump ring improve after their first use.
             if (src.isPlaying && !_wasPlayingLastFrame)
+            {
                 _playStartWallTime = Time.time;
+
+                if (src.clip == null)
+                {
+                    AudioEmitter ae = GetComponent<AudioEmitter>();
+                    if (ae != null && AudioManager.Instance != null)
+                    {
+                        AudioClip oneShotClip = AudioManager.Instance.GetClip(ae.clipLabel);
+                        _playOneShotClipLength = oneShotClip != null ? oneShotClip.length : _playOneShotClipLength;
+                    }
+                    // else: no AudioEmitter — keep last measured value (or -1 on first play)
+                }
+            }
+
+            // Falling edge: measure the actual playback duration for sources where
+            // src.clip is null (PlayOneShot).  This updates _playOneShotClipLength
+            // so ANY component that calls PlayOneShot gets an accurate ring from its
+            // second play onward — no AudioEmitter needed.
+            if (!src.isPlaying && _wasPlayingLastFrame && src.clip == null
+                && _playStartWallTime >= 0f)
+            {
+                float measured = Time.time - _playStartWallTime;
+                if (measured > 0.05f)
+                    _playOneShotClipLength = measured;
+            }
 
             if (src.isPlaying)
             {
@@ -242,12 +275,13 @@ public class DebugEmitter : MonoBehaviour
             {
                 if (src.clip != null)
                 {
-                    // Single ring: progress directly mirrors playback position so
-                    // radius=0 at clip start, radius=maxDist at clip end, and the
-                    // ring can never grow past the fade-out point.
+                    // progress=0 → ring sits on the min-range sphere (clip start)
+                    // progress=1 → ring sits on the max-range sphere (clip end, fully faded)
+                    // The clip length is the sole timer, so the journey always fills
+                    // exactly one playback cycle regardless of distance or waveSpeed.
                     float effectiveTime = src.isPlaying ? src.time : _lastSrcTime;
                     float progress      = Mathf.Clamp01(effectiveTime / src.clip.length);
-                    float radius        = progress * maxDist;
+                    float radius        = Mathf.Lerp(minDist, maxDist, progress);
                     float alpha         = (1f - progress) * graceFade * 0.85f;
 
                     if (alpha > 0.01f)
@@ -258,16 +292,29 @@ public class DebugEmitter : MonoBehaviour
                 }
                 else
                 {
-                    // No clip assigned (PlayOneShot) — single ring expands once from
-                    // the moment the source started playing.  Clamp01 stops it at
-                    // maxDist so it can never "grow" past the fade-out point.
-                    float cycleDuration = maxDist / Mathf.Max(waveSpeed, 0.01f);
-                    float elapsed       = _playStartWallTime < 0f
-                        ? cycleDuration                           // no record yet → fully expanded / invisible
-                        : Time.time - _playStartWallTime;
-                    float progress      = Mathf.Clamp01(elapsed / cycleDuration);
-                    float radius        = progress * maxDist;
-                    float alpha         = (1f - progress) * graceFade * 0.85f;
+                    // src.clip is null (PlayOneShot path in AudioEmitter).
+                    // If we cached the clip length on the rising edge, use the same
+                    // clip-length lerp as the branch above so the ring always spans
+                    // exactly minDist → maxDist over one clip cycle.
+                    // If no length is available (e.g. player jump with no AudioEmitter),
+                    // fall back to waveSpeed so something still shows.
+                    float elapsed = _playStartWallTime < 0f ? 0f
+                                  : Time.time - _playStartWallTime;
+
+                    float progress;
+                    if (_playOneShotClipLength > 0f)
+                    {
+                        progress = Mathf.Clamp01(elapsed / _playOneShotClipLength);
+                    }
+                    else
+                    {
+                        float travelDist = Mathf.Max(maxDist - minDist, 0.001f);
+                        float radius0    = Mathf.Clamp(minDist + waveSpeed * elapsed, minDist, maxDist);
+                        progress         = (radius0 - minDist) / travelDist;
+                    }
+
+                    float radius = Mathf.Lerp(minDist, maxDist, progress);
+                    float alpha  = (1f - progress) * graceFade * 0.85f;
 
                     if (alpha > 0.01f)
                     {
@@ -278,8 +325,9 @@ public class DebugEmitter : MonoBehaviour
             }
         }
 
-        // ── Emitter label (warm yellow — readable on any background) ─────────
-        Handles.color = new Color(1f, 0.92f, 0.3f, 1f);
+        // ── Emitter label — same color as the emitter's spheres/ring so the
+        //    name is unambiguously tied to its boundaries at a glance.
+        Handles.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
         Handles.Label(emitterPos + Vector3.up * (minDist + 0.25f),
             $"{gameObject.name}\nVol: {effVol:F2}");
     }
