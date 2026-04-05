@@ -2539,6 +2539,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MinimapEmitterRing
   outOfRangeColor: {r: 1, g: 0, b: 0, a: 1}
+  staticRingWidth: 0.5
+  pulseRingWidth: 0.3
+  staticRingOpacity: 1
 --- !u!114 &902104966
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3564,6 +3567,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MinimapEmitterRing
   outOfRangeColor: {r: 1, g: 0, b: 0, a: 1}
+  staticRingWidth: 0.5
+  pulseRingWidth: 0.3
+  staticRingOpacity: 1
 --- !u!114 &1140744943
 MonoBehaviour:
   m_ObjectHideFlags: 0

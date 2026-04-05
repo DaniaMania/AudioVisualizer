@@ -4,6 +4,9 @@ public class MinimapEmitterRing : MonoBehaviour
 {
     [Header("Ring Settings")]
     public Color outOfRangeColor = Color.red;
+    public float staticRingWidth = 0.5f;
+    public float pulseRingWidth = 0.3f;
+    public float staticRingOpacity = 1.0f;
 
     private LineRenderer pulseRing;
     private LineRenderer staticRing;
@@ -27,8 +30,8 @@ public class MinimapEmitterRing : MonoBehaviour
         debugEmitter = GetComponent<DebugEmitter>();
         maxRadius = audioSource.maxDistance;
 
-        pulseRing = CreateRing("PulseRing", 0.3f);
-        staticRing = CreateRing("StaticRing", 0.15f);
+        pulseRing = CreateRing("PulseRing", pulseRingWidth);
+        staticRing = CreateRing("StaticRing", staticRingWidth);
 
         pulseMaterial = CreateMaterial();
         staticMaterial = CreateMaterial();
@@ -53,22 +56,21 @@ public class MinimapEmitterRing : MonoBehaviour
             horizontalRadius = Mathf.Sqrt(maxRadius * maxRadius - dy * dy);
 
         bool playerInRange = debugEmitter.DistanceToListener <= audioSource.maxDistance;
-        Color targetColor = playerInRange
-            ? DebugEmitter.GetEmitterColor(gameObject.GetInstanceID())
-            : outOfRangeColor;
+        Color emitterColor = DebugEmitter.GetEmitterColor(gameObject.GetInstanceID());
+        Color pulseColor = playerInRange ? emitterColor : outOfRangeColor;
 
         if (isPulsing && horizontalRadius > 0f)
         {
             staticRing.enabled = true;
-            staticMaterial?.SetColor("_BaseColor", targetColor * 0.4f);
-            staticRing.startColor = targetColor * 0.4f;
-            staticRing.endColor = targetColor * 0.4f;
+            if (staticMaterial != null) staticMaterial.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, staticRingOpacity);
+            staticRing.startColor = new Color(emitterColor.r, emitterColor.g, emitterColor.b, staticRingOpacity);
+            staticRing.endColor = new Color(emitterColor.r, emitterColor.g, emitterColor.b, staticRingOpacity);
             DrawRing(staticRing, horizontalRadius);
 
             pulseRing.enabled = true;
-            pulseMaterial?.SetColor("_BaseColor", targetColor);
-            pulseRing.startColor = targetColor;
-            pulseRing.endColor = targetColor;
+            if (pulseMaterial != null) pulseMaterial.color = pulseColor;
+            pulseRing.startColor = pulseColor;
+            pulseRing.endColor = pulseColor;
 
             float scaledRadius = (currentRadius / maxRadius) * horizontalRadius;
             currentRadius += expansionSpeed * Time.deltaTime;
