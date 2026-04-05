@@ -3086,12 +3086,13 @@ MonoBehaviour:
   occlusionVolumeMultiplier: 0.7
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
-  occlusionLowPassCutoff: 600
-  occlusionLowPassResonance: 3
+  occlusionLowPassCutoff: 1000
+  occlusionLowPassResonance: 1
   occlusionLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 2
   dopplerEnabled: 0
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -3102,10 +3103,6 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
-  reverbEnabled: 0
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!1 &788572621
 GameObject:
   m_ObjectHideFlags: 0
@@ -3366,11 +3363,12 @@ MonoBehaviour:
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
   occlusionLowPassCutoff: 800
-  occlusionLowPassResonance: 3
+  occlusionLowPassResonance: 1
   occlusionLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 2
   dopplerEnabled: 0
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -3381,10 +3379,6 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
-  reverbEnabled: 1
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!114 &902104967
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4442,11 +4436,12 @@ MonoBehaviour:
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
   occlusionLowPassCutoff: 600
-  occlusionLowPassResonance: 3
+  occlusionLowPassResonance: 1
   occlusionLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 2
   dopplerEnabled: 0
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -4457,10 +4452,6 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
-  reverbEnabled: 0
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!114 &1140744944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5009,6 +5000,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 0.5
   dopplerEnabled: 0
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -5019,10 +5011,6 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
-  reverbEnabled: 0
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!1 &1251749145
 GameObject:
   m_ObjectHideFlags: 0
@@ -5811,11 +5799,12 @@ MonoBehaviour:
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
   occlusionLowPassCutoff: 800
-  occlusionLowPassResonance: 3
+  occlusionLowPassResonance: 1
   occlusionLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 2
   dopplerEnabled: 1
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -5826,10 +5815,6 @@ MonoBehaviour:
   distancePitchEnabled: 1
   pitchAtMinDistance: 1.2
   pitchAtMaxDistance: 0.8
-  reverbEnabled: 0
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!114 &1531634684
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7149,12 +7134,13 @@ MonoBehaviour:
   occlusionVolumeMultiplier: 0.7
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
-  occlusionLowPassCutoff: 600
-  occlusionLowPassResonance: 3
+  occlusionLowPassCutoff: 1000
+  occlusionLowPassResonance: 1
   occlusionLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
+  occlusionThicknessReference: 2
   dopplerEnabled: 0
   soundSpeed: 343
   maxDisplacementDistance: 15
@@ -7165,10 +7151,6 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
-  reverbEnabled: 0
-  reverbWetLevel: 1
-  surfaceAbsorption: 0.2
-  reverbSmoothSpeed: 1.5
 --- !u!1 &1966485307
 GameObject:
   m_ObjectHideFlags: 0
