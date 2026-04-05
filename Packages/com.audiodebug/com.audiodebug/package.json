@@ -1,0 +1,25 @@
+{
+  "name": "com.audiodebug",
+  "version": "1.0.0",
+  "displayName": "Audio Debug System",
+  "description": "Runtime audio debugging toolkit for Unity URP. Per-emitter occlusion, Doppler displacement, minimap ring visualizer, screen-space direction visualizer, and a live debug HUD — all toggleable at runtime.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0",
+    "com.unity.render-pipelines.universal": "17.0.0"
+  },
+  "optionalDependencies": {
+    "com.unity.splines": "2.4.0"
+  },
+  "samples": [
+    {
+      "displayName": "Demo Scene Scripts",
+      "description": "Basic PlayerController and Figure8Mover used in the demo scene.",
+      "path": "Samples~/Demo"
+    }
+  ],
+  "keywords": ["audio", "debug", "occlusion", "doppler", "minimap", "URP"],
+  "author": {
+    "name": "Your Name"
+  }
+}
