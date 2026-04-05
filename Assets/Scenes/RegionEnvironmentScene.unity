@@ -2652,6 +2652,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &840368558
 GameObject:
   m_ObjectHideFlags: 0
@@ -2852,6 +2856,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 1
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &902104967
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3837,6 +3845,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &1140744944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4396,6 +4408,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &1353915676
 GameObject:
   m_ObjectHideFlags: 0
@@ -5063,6 +5079,10 @@ MonoBehaviour:
   distancePitchEnabled: 1
   pitchAtMinDistance: 1.2
   pitchAtMaxDistance: 0.8
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &1531634684
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6133,6 +6153,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &1966485307
 GameObject:
   m_ObjectHideFlags: 0
@@ -6710,9 +6734,41 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1410767122}
     m_Modifications:
+    - target: {fileID: 1626030357913126160, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1626030357913126160, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1626030357913126160, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1626030357913126160, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7006511929325198931, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
       propertyPath: m_Name
       value: Minimap
+      objectReference: {fileID: 0}
+    - target: {fileID: 7056083379325211633, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7056083379325211633, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7056083379325211633, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7056083379325211633, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7104452430160497246, guid: 3184fc9abe46b474aa63a246d1d11152, type: 3}
       propertyPath: player
