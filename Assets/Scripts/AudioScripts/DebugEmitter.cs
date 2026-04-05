@@ -73,6 +73,23 @@ public class DebugEmitter : MonoBehaviour
     [Tooltip("Pitch multiplier applied when the listener is at Max Distance.")]
     [SerializeField][Range(0.5f, 2f)] private float pitchAtMaxDistance = 0.9f;
 
+    // ── Reverb ────────────────────────────────────────────────────────────────
+    [Header("Reverb")]
+    [Tooltip("Simulate acoustic reverb using the 10 environment probe rays. Hit distances are fed into " +
+             "Sabine's reverberation formula to derive RT60 decay time, early reflection delay, " +
+             "HF dampening, and diffusion — all from actual scene geometry. Works independently of " +
+             "Occlusion; if Occlusion is also enabled the same probe pass is shared.")]
+    [SerializeField] private bool reverbEnabled = false;
+    [Tooltip("Overall wet/dry scale (0 = no reverb even in fully enclosed rooms, 1 = full physics estimate).")]
+    [SerializeField][Range(0f, 1f)] private float reverbWetLevel = 1f;
+    [Tooltip("Average acoustic absorption of surrounding surfaces. " +
+             "0.05 = polished concrete / glass (very live), 0.15 = brick / plaster, " +
+             "0.30 = wood panels, 0.50 = carpet / acoustic foam (dead). " +
+             "Controls RT60, HF decay ratio, and reverb tail brightness.")]
+    [SerializeField][Range(0.05f, 0.95f)] private float surfaceAbsorption = 0.2f;
+    [Tooltip("How quickly reverb parameters crossfade when the acoustic environment changes.")]
+    [SerializeField][Range(0.5f, 10f)] private float reverbSmoothSpeed = 1.5f;
+
     // ── Private runtime state ─────────────────────────────────────────────────
     private AudioSource   audioSource;
     private AudioListener _listener;
@@ -123,6 +140,22 @@ public class DebugEmitter : MonoBehaviour
     private float _naturalPitch    = 1f;   // pitch  AudioEmitter intended; captured once per rising edge
     private bool  _srcWasPlayingLU = false; // rising-edge tracker for LateUpdate
 
+    // Probe-ray runtime state — written every LateUpdate when probe runs.
+    // _probeRayHitPoints is editor-only (gizmo drawing only).
+    private readonly bool[]  _probeRayDidHit    = new bool[10];
+    private readonly float[] _probeHitDistances = new float[10]; // distance to hit, or probeDistance if open
+
+    // Reverb — AudioReverbFilter driven by Sabine-formula estimates from probe rays
+    private AudioReverbFilter _reverbFilter;
+    private AudioReverbFilter _proxyReverbFilter;
+    private float _smoothedRoomLevel    = 0f;    // 0..1 maps to -10000..-1000 mB
+    private float _smoothedDecayTime    = 0.3f;  // seconds
+    private float _smoothedReflDelay    = 0.02f; // seconds
+    private float _smoothedRoomHFLevel  = 0f;    // 0..1
+    private float _smoothedDecayHFRatio = 0.5f;  // 0.1..2.0
+    private float _smoothedDiffusion    = 50f;   // 0..100
+    private float _smoothedDensity      = 50f;   // 0..100
+
 #if UNITY_EDITOR
     // Ring animation state (editor-only — only read inside OnDrawGizmos)
     private float _lastPlayingWallTime   = -1f;
@@ -131,9 +164,7 @@ public class DebugEmitter : MonoBehaviour
     private bool  _wasPlayingLastFrame   = false;
     private float _playOneShotClipLength = -1f;
 
-    // Probe-ray gizmo state — written by ComputeEnvironmentFactor in LateUpdate,
-    // read by OnDrawGizmos. One entry per probe ray (10 total).
-    private readonly bool[]    _probeRayDidHit    = new bool[10];
+    // World-space hit positions — used only for gizmo sphere drawing.
     private readonly Vector3[] _probeRayHitPoints = new Vector3[10];
 #endif
 
@@ -145,6 +176,8 @@ public class DebugEmitter : MonoBehaviour
     public float   DisplacementDistance   { get; private set; }
     public Vector3 DisplacedAudioPosition { get; private set; }
     public float   CurrentPitch           { get; private set; } = 1f;
+    public float   ReverbDecayTime        { get; private set; } = 0f;  // smoothed RT60 in seconds; 0 = reverb off/inactive
+    public float   CurrentLowPassCutoff   { get; private set; } = 22000f; // Hz; 22000 = no filtering
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -248,6 +281,11 @@ public class DebugEmitter : MonoBehaviour
             _lowPassFilter.lowpassResonanceQ = 1f;
         }
 
+        if (_reverbFilter != null)
+            _reverbFilter.reverbPreset = AudioReverbPreset.Off;
+        if (_proxyReverbFilter != null)
+            _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
+
 #if UNITY_EDITOR
         EditorApplication.update -= SceneView.RepaintAll;
 #endif
@@ -302,8 +340,9 @@ public class DebugEmitter : MonoBehaviour
 
         EffectiveVolume = ComputeEffectiveVolume(audioSource, DistanceToListener, _naturalVolume);
 
-        // ── 4. Occlusion ─────────────────────────────────────────────────────
-        bool inRange = occlusionEnabled && DistanceToListener <= audioSource.maxDistance;
+        // ── 4. Occlusion + probe rays ─────────────────────────────────────────────
+        bool inAudioRange = DistanceToListener <= audioSource.maxDistance;
+        bool inRange      = occlusionEnabled && inAudioRange;
 
         if (occlusionEnabled)
         {
@@ -314,7 +353,7 @@ public class DebugEmitter : MonoBehaviour
             {
                 // ── Raycasts: compute this frame's targets ────────────────────
                 EnsureLowPassFilter();
-                _wallHitCount       = CastWallRay(_listener.transform.position, audioPos);
+                _wallHitCount         = CastWallRay(_listener.transform.position, audioPos);
                 targetOcclusionFactor = Mathf.Max(
                     Mathf.Pow(occlusionVolumeMultiplier, _wallHitCount),
                     occlusionVolumeFloor);
@@ -346,6 +385,7 @@ public class DebugEmitter : MonoBehaviour
 
             float cutoff    = Mathf.Lerp(22000f, occlusionLowPassCutoff,  _smoothedFilterT);
             float resonance = Mathf.Lerp(1f,     occlusionLowPassResonance, _smoothedFilterT);
+            CurrentLowPassCutoff = cutoff;
 
             if (dopplerEnabled && _proxySource != null)
             {
@@ -368,13 +408,24 @@ public class DebugEmitter : MonoBehaviour
         }
         else
         {
-            // Occlusion disabled — snap everything clean immediately
+            // Occlusion disabled — snap occlusion state clean immediately.
+            // If reverb is enabled, still run probe rays so reverb has data.
             OcclusionFactor          = 1f;
-            IndoorRatio              = 0f;
             _smoothedOcclusionFactor = 1f;
             _smoothedFilterT         = 0f;
             _wallHitCount            = 0;
-            _probeHitCount           = 0;
+            CurrentLowPassCutoff     = 22000f;
+
+            if (reverbEnabled && inAudioRange)
+            {
+                IndoorRatio = ComputeEnvironmentProbe(audioPos);
+            }
+            else
+            {
+                _probeHitCount = 0;
+                IndoorRatio    = 0f;
+            }
+
             if (srcIsPlaying)
                 audioSource.volume = _naturalVolume;
             if (_lowPassFilter != null)
@@ -387,6 +438,49 @@ public class DebugEmitter : MonoBehaviour
                 _proxyLowPassFilter.cutoffFrequency   = 22000f;
                 _proxyLowPassFilter.lowpassResonanceQ = 1f;
             }
+        }
+
+        // ── 4b. Reverb ────────────────────────────────────────────────────────
+        // Uses IndoorRatio + _probeHitDistances already computed above (shared with
+        // occlusion probe pass, or from the reverb-only probe in the else branch).
+        if (reverbEnabled)
+        {
+            if (inAudioRange)
+            {
+                EnsureReverbFilter();
+
+                ComputeReverbParameters(
+                    out float tRoom,     out float tDecay,      out float tReflDelay,
+                    out float tRoomHF,   out float tHFRatio,
+                    out float tDiffusion, out float tDensity);
+
+                float rt = reverbSmoothSpeed * Time.deltaTime;
+                _smoothedRoomLevel    = Mathf.Lerp(_smoothedRoomLevel,    tRoom,       rt);
+                _smoothedDecayTime    = Mathf.Lerp(_smoothedDecayTime,    tDecay,      rt);
+                _smoothedReflDelay    = Mathf.Lerp(_smoothedReflDelay,    tReflDelay,  rt);
+                _smoothedRoomHFLevel  = Mathf.Lerp(_smoothedRoomHFLevel,  tRoomHF,     rt);
+                _smoothedDecayHFRatio = Mathf.Lerp(_smoothedDecayHFRatio, tHFRatio,    rt);
+                _smoothedDiffusion    = Mathf.Lerp(_smoothedDiffusion,    tDiffusion,  rt);
+                _smoothedDensity      = Mathf.Lerp(_smoothedDensity,      tDensity,    rt);
+            }
+            else
+            {
+                // Outside range — gently fade reverb to silence so re-entry doesn't pop.
+                float rt = reverbSmoothSpeed * Time.deltaTime;
+                _smoothedRoomLevel    = Mathf.Lerp(_smoothedRoomLevel,    0f,   rt);
+                _smoothedDecayHFRatio = Mathf.Lerp(_smoothedDecayHFRatio, 0.5f, rt);
+            }
+
+            ApplyReverbFilter();
+            ReverbDecayTime = _smoothedRoomLevel > 0.001f ? _smoothedDecayTime : 0f;
+        }
+        else if (_reverbFilter != null)
+        {
+            ReverbDecayTime = 0f;
+            // Reverb just toggled off — silence filter immediately.
+            _reverbFilter.reverbPreset = AudioReverbPreset.Off;
+            if (_proxyReverbFilter != null)
+                _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
         }
 
         // ── 5. Doppler pitch (per-emitter, gated on dopplerEnabled) ──────────
@@ -507,9 +601,14 @@ public class DebugEmitter : MonoBehaviour
                 }
             }
 
+            // Distance to hit point (or full probe length if ray was open)
+            float hitDist = didHit
+                ? Vector3.Distance(emitterPos, hitPoint)
+                : occlusionProbeDistance;
+            _probeRayDidHit[i]    = didHit;
+            _probeHitDistances[i] = hitDist;
             if (didHit) hitCount++;
 #if UNITY_EDITOR
-            _probeRayDidHit[i]    = didHit;
             _probeRayHitPoints[i] = hitPoint;
 #endif
         }
@@ -525,6 +624,132 @@ public class DebugEmitter : MonoBehaviour
         for (Transform t = child; t != null; t = t.parent)
             if (t == ancestor) return true;
         return false;
+    }
+
+    // ── Reverb ────────────────────────────────────────────────────────────────
+
+    private void EnsureReverbFilter()
+    {
+        if (_reverbFilter != null) return;
+        if (!TryGetComponent(out _reverbFilter))
+            _reverbFilter = gameObject.AddComponent<AudioReverbFilter>();
+        _reverbFilter.reverbPreset = AudioReverbPreset.User;
+        _reverbFilter.room         = -10000f; // start dry — will be smoothed in
+    }
+
+    // Derives all reverb parameters from the 10 probe ray hit distances using
+    // Sabine's reverberation formula and real acoustic physics.
+    private void ComputeReverbParameters(
+        out float targetRoomLevel,    out float targetDecayTime,
+        out float targetReflDelay,    out float targetRoomHFLevel,
+        out float targetDecayHFRatio, out float targetDiffusion,
+        out float targetDensity)
+    {
+        const float kSoundSpeed = 343f;
+
+        // ── Gather distances from probe rays ──────────────────────────────────
+        // _probeHitDistances[i] = distance to nearest wall, or occlusionProbeDistance if open.
+        float sumDist  = 0f;
+        float sumDist2 = 0f;
+        float minDist  = float.MaxValue;
+
+        for (int i = 0; i < 10; i++)
+        {
+            float d   = _probeHitDistances[i];
+            sumDist  += d;
+            sumDist2 += d * d;
+            if (_probeRayDidHit[i] && d < minDist)
+                minDist = d;
+        }
+
+        if (minDist == float.MaxValue)
+            minDist = occlusionProbeDistance; // all rays open — no close wall
+
+        float avgDist  = sumDist / 10f;
+        float variance = Mathf.Max(sumDist2 / 10f - avgDist * avgDist, 0f);
+        float stdDev   = Mathf.Sqrt(variance);
+
+        // ── Sabine's formula: RT60 = 0.161 × V / (α × S) ─────────────────────
+        // Approximate the enclosure as a sphere of radius avgDist.
+        // V = (4/3)π r³,  S = 4π r²  →  RT60 ≈ (0.161 × r) / (3 × α) ≈ 0.054 r / α
+        // Scale by IndoorRatio: open rays represent "holes" in the enclosure that
+        // bleed energy outdoors, shortening effective reverb time.
+        targetDecayTime = Mathf.Clamp(
+            0.054f * avgDist / Mathf.Max(surfaceAbsorption, 0.001f) * IndoorRatio,
+            0.1f, 10f);
+
+        // ── Wet level ─────────────────────────────────────────────────────────
+        // More enclosed + softer surfaces → louder reverb tail.
+        targetRoomLevel = IndoorRatio * reverbWetLevel;
+
+        // ── Early reflections delay ───────────────────────────────────────────
+        // Round-trip travel time to nearest wall and back:  delay = 2 × d_min / c
+        // A 3 m room gives ≈ 17 ms; a 10 m room gives ≈ 58 ms — both physically correct.
+        targetReflDelay = Mathf.Clamp(2f * minDist / kSoundSpeed, 0f, 0.3f);
+
+        // ── HF energy in reverb tail ──────────────────────────────────────────
+        // Larger rooms absorb more HF via air; soft surfaces absorb HF directly.
+        // Both effects reduce HF in the reverb tail.
+        targetRoomHFLevel = Mathf.Clamp01(
+            1f - (avgDist / Mathf.Max(occlusionProbeDistance, 1f)) * 0.5f
+               - surfaceAbsorption * 0.5f);
+
+        // ── HF decay ratio ────────────────────────────────────────────────────
+        // Hard surfaces (concrete, glass): α ≈ 0.03–0.05 → ratio ≈ 0.95–1.0
+        //   (all frequencies decay at similar rates — no HF roll-off in tail)
+        // Soft surfaces (carpet, foam):    α ≈ 0.4–0.7  → ratio ≈ 0.65–0.8
+        //   (HF decays notably faster than LF — warm, absorptive tail)
+        // Outdoor:                                         → ratio → 0.5
+        //   (HF absorbed quickly by air and ground)
+        float hardnessRatio = Mathf.Lerp(0.5f, 1.0f, 1f - surfaceAbsorption);
+        targetDecayHFRatio  = Mathf.Clamp(
+            Mathf.Lerp(0.5f, hardnessRatio, IndoorRatio), 0.1f, 2f);
+
+        // ── Diffusion (echo density of late reverb) ───────────────────────────
+        // High variance in wall distances → walls at irregular spacing → dense,
+        // diffuse late reverb (smooth tail). Low variance → parallel walls →
+        // flutter echo (narrow, "bathtub" reverb). Scale by IndoorRatio: outdoors
+        // there is no late diffuse field.
+        float normalizedStd = Mathf.Clamp01(stdDev / Mathf.Max(avgDist, 0.001f));
+        targetDiffusion = Mathf.Lerp(15f, 100f, normalizedStd) * IndoorRatio;
+
+        // ── Density (modal density of the late reverb tail) ───────────────────
+        // Smaller enclosed rooms → more closely spaced room modes per Hz → denser
+        // reverb tail. Scale: fully enclosed small room = 100, open field = 0.
+        targetDensity = Mathf.Clamp(
+            IndoorRatio * Mathf.Clamp01(1f - targetDecayTime / 10f) * 100f,
+            IndoorRatio * 20f, 100f);
+    }
+
+    private void ApplyReverbFilter()
+    {
+        // Route to proxy source when Doppler displacement is active.
+        AudioReverbFilter target = (dopplerEnabled && _proxyReverbFilter != null)
+            ? _proxyReverbFilter : _reverbFilter;
+        if (target == null) return;
+
+        // Map normalized roomLevel (0..1) to the millibel scale Unity/EFX uses.
+        // 0 mB = unity gain; −10000 mB ≈ −100 dB (effectively silent).
+        // −1000 mB = −10 dB wet → moderate reverb at full IndoorRatio.
+        float roomMB  = Mathf.Lerp(-10000f, -1000f, _smoothedRoomLevel);
+        float roomHFMB = Mathf.Lerp( -5000f,     0f, _smoothedRoomHFLevel);
+        float reflMB  = Mathf.Lerp(-10000f, -2000f, _smoothedRoomLevel);
+        float revMB   = Mathf.Lerp(-10000f, -1200f, _smoothedRoomLevel);
+
+        // Late reverb delay is a fraction of the early reflection delay.
+        float reverbDelay = Mathf.Clamp(_smoothedReflDelay * 0.4f, 0f, 0.1f);
+
+        target.reverbPreset     = AudioReverbPreset.User;
+        target.room             = roomMB;
+        target.roomHF           = roomHFMB;
+        target.decayTime        = Mathf.Max(_smoothedDecayTime, 0.1f);
+        target.decayHFRatio     = _smoothedDecayHFRatio;
+        target.reflectionsLevel = reflMB;
+        target.reflectionsDelay = _smoothedReflDelay;
+        target.reverbLevel      = revMB;
+        target.reverbDelay      = reverbDelay;
+        target.diffusion        = Mathf.Clamp(_smoothedDiffusion, 0f, 100f);
+        target.density          = Mathf.Clamp(_smoothedDensity,   0f, 100f);
     }
 
     // ── Doppler displacement ──────────────────────────────────────────────────
@@ -549,6 +774,13 @@ public class DebugEmitter : MonoBehaviour
 
         _proxyLowPassFilter = _proxyGO.AddComponent<AudioLowPassFilter>();
         _proxyLowPassFilter.cutoffFrequency = 22000f;
+
+        // Mirror reverb filter to proxy if reverb is already active
+        if (reverbEnabled)
+        {
+            _proxyReverbFilter = _proxyGO.AddComponent<AudioReverbFilter>();
+            _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
+        }
     }
 
     private void UpdateVelocity()

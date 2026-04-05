@@ -3102,6 +3102,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &788572621
 GameObject:
   m_ObjectHideFlags: 0
@@ -3377,6 +3381,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 1
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &902104967
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4449,6 +4457,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &1140744944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5007,6 +5019,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &1251749145
 GameObject:
   m_ObjectHideFlags: 0
@@ -5810,6 +5826,10 @@ MonoBehaviour:
   distancePitchEnabled: 1
   pitchAtMinDistance: 1.2
   pitchAtMaxDistance: 0.8
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!114 &1531634684
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7145,6 +7165,10 @@ MonoBehaviour:
   distancePitchEnabled: 0
   pitchAtMinDistance: 1.1
   pitchAtMaxDistance: 0.9
+  reverbEnabled: 0
+  reverbWetLevel: 1
+  surfaceAbsorption: 0.2
+  reverbSmoothSpeed: 1.5
 --- !u!1 &1966485307
 GameObject:
   m_ObjectHideFlags: 0
