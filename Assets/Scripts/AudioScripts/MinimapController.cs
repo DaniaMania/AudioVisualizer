@@ -65,8 +65,6 @@ public class MinimapController : MonoBehaviour
     {
         isOverview = !isOverview;
 
-        
-        
         if (isOverview)
         {
             minimapCamera.transform.SetParent(null);
@@ -99,6 +97,6 @@ public class MinimapController : MonoBehaviour
             if (dist > furthest) furthest = dist;
         }
 
-        return furthest + 10f; 
+        return furthest + 10f;
     }
 }
