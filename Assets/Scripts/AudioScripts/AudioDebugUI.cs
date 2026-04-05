@@ -15,13 +15,15 @@ public class AudioDebugUI : MonoBehaviour
 
     private const float WINDOW_X     = 10f;
     private const float WINDOW_Y     = 10f;
-    private const float WINDOW_WIDTH = 530f;
+    private const float WINDOW_WIDTH = 675f;
     private const float ROW_HEIGHT   = 22f;
     private const float COL_NAME     = 160f;
     private const float COL_DIST     = 85f;
     private const float COL_VOL      = 85f;
     private const float COL_BLEND    = 75f;
     private const float COL_MUTE     = 65f;
+    private const float COL_OCC      = 70f;
+    private const float COL_DISP     = 75f;
     private const float PADDING      = 6f;
 
     private void Update()
@@ -80,7 +82,9 @@ public class AudioDebugUI : MonoBehaviour
         GUI.Label(new Rect(x, y, COL_DIST,  ROW_HEIGHT), "Distance",    headerStyle); x += COL_DIST;
         GUI.Label(new Rect(x, y, COL_VOL,   ROW_HEIGHT), "Eff. Volume", headerStyle); x += COL_VOL;
         GUI.Label(new Rect(x, y, COL_BLEND, ROW_HEIGHT), "Spatial",     headerStyle); x += COL_BLEND;
-        GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), "Muted",       headerStyle);
+        GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), "Muted",       headerStyle); x += COL_MUTE;
+        GUI.Label(new Rect(x, y, COL_OCC,   ROW_HEIGHT), "Occl.",       headerStyle); x += COL_OCC;
+        GUI.Label(new Rect(x, y, COL_DISP,  ROW_HEIGHT), "Displ.",      headerStyle);
         y += ROW_HEIGHT + PADDING;
 
         // Separator
@@ -110,7 +114,9 @@ public class AudioDebugUI : MonoBehaviour
             GUI.Label(new Rect(x, y, COL_DIST,  ROW_HEIGHT), emitter.DistanceToListener.ToString("F1") + "m", rowStyle); x += COL_DIST;
             GUI.Label(new Rect(x, y, COL_VOL,   ROW_HEIGHT), emitter.EffectiveVolume.ToString("F2"),           rowStyle); x += COL_VOL;
             GUI.Label(new Rect(x, y, COL_BLEND, ROW_HEIGHT), src.spatialBlend.ToString("F2"),                  rowStyle); x += COL_BLEND;
-            GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), src.mute ? "YES" : "-",                           rowStyle);
+            GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), src.mute ? "YES" : "-",                            rowStyle); x += COL_MUTE;
+            GUI.Label(new Rect(x, y, COL_OCC,   ROW_HEIGHT), emitter.OcclusionFactor.ToString("F2"),            rowStyle); x += COL_OCC;
+            GUI.Label(new Rect(x, y, COL_DISP,  ROW_HEIGHT), emitter.DisplacementDistance.ToString("F1") + "m", rowStyle);
             y += ROW_HEIGHT;
         }
     }
