@@ -134,6 +134,7 @@ public class MinimapEmitterRing : MonoBehaviour
         mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
         mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
         mat.SetInt("_ZWrite", 0);
+        mat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always); // always on top
         mat.renderQueue = 3000;
         return mat;
     }

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using UnityEngine.Rendering.Universal;
 
 public class MinimapController : MonoBehaviour
 {
@@ -19,7 +20,8 @@ public class MinimapController : MonoBehaviour
 
     private bool isOverview = false;
     private Vector3 overviewPosition;
-    
+    private Camera _overlayCamera;
+
     public bool IsOverview => isOverview;
     public Key ToggleOverviewKey => toggleOverviewKey;
 
@@ -30,6 +32,8 @@ public class MinimapController : MonoBehaviour
         minimapCamera.transform.SetParent(player);
         minimapCamera.transform.localPosition = new Vector3(0, 50, 0);
         minimapCamera.transform.localRotation = Quaternion.Euler(90, 0, 0);
+
+        SetupOverlayCamera();
     }
 
     void Update()
@@ -40,6 +44,9 @@ public class MinimapController : MonoBehaviour
             pos.y = minimapCamera.transform.position.y;
             minimapCamera.transform.position = pos;
         }
+
+        if (_overlayCamera != null)
+            _overlayCamera.orthographicSize = minimapCamera.orthographicSize;
 
         if (Keyboard.current[toggleOverviewKey].wasPressedThisFrame)
             ToggleOverview();
@@ -98,5 +105,40 @@ public class MinimapController : MonoBehaviour
         }
 
         return furthest + 10f;
+    }
+
+    // Creates a URP Overlay camera that renders only the Minimap layer, stacked
+    // on top of the base minimap camera. Because overlay cameras render after the
+    // base pass (and clear depth before their own pass), rings are always drawn
+    // on top of terrain and any other geometry.
+    private void SetupOverlayCamera()
+    {
+        int minimapLayer = LayerMask.NameToLayer("Minimap");
+        if (minimapLayer == -1)
+        {
+            Debug.LogWarning("[MinimapController] 'Minimap' layer not found — ring overlay skipped.");
+            return;
+        }
+
+        minimapCamera.cullingMask &= ~(1 << minimapLayer);
+
+        var overlayGO = new GameObject("_MinimapRingOverlay");
+        overlayGO.transform.SetParent(minimapCamera.transform);
+        overlayGO.transform.localPosition = Vector3.zero;
+        overlayGO.transform.localRotation = Quaternion.identity;
+        overlayGO.transform.localScale    = Vector3.one;
+
+        _overlayCamera = overlayGO.AddComponent<Camera>();
+        _overlayCamera.CopyFrom(minimapCamera);
+        _overlayCamera.cullingMask = 1 << minimapLayer;
+
+        var overlayData = overlayGO.AddComponent<UniversalAdditionalCameraData>();
+        overlayData.renderType = CameraRenderType.Overlay;
+
+        var baseData = minimapCamera.GetComponent<UniversalAdditionalCameraData>();
+        if (baseData != null && !baseData.cameraStack.Contains(_overlayCamera))
+            baseData.cameraStack.Add(_overlayCamera);
+        else if (baseData == null)
+            Debug.LogWarning("[MinimapController] Base camera has no UniversalAdditionalCameraData — overlay not stacked.");
     }
 }
