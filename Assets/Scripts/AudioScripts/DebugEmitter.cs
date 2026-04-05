@@ -583,6 +583,13 @@ public class DebugEmitter : MonoBehaviour
         float dist   = hasListener ? Vector3.Distance(emitterPos, listenerPos) : 0f;
         float effVol = ComputeEffectiveVolume(src, dist);
 
+        // Shared label style — black bold text so it reads clearly on any background
+        var labelStyle = new GUIStyle(GUI.skin.label)
+        {
+            normal    = { textColor = Color.black },
+            fontStyle = FontStyle.Bold
+        };
+
         // Per-emitter unique color (Wang hash on instance ID)
         uint uid = (uint)Mathf.Abs(gameObject.GetInstanceID());
         uid ^= uid >> 16; uid *= 0x45d9f3bu; uid ^= uid >> 16;
@@ -646,9 +653,10 @@ public class DebugEmitter : MonoBehaviour
                 string envTag = _probeHitCount >= 7 ? "Indoors"
                               : _probeHitCount >= 4 ? "Partial"
                               :                       "Outdoors";
-                Handles.color = Color.white;
-                Handles.Label(audioGizmoPos + Vector3.up * 0.3f,
-                    $"Occ: {OcclusionFactor:F2}  ({_wallHitCount} wall{(_wallHitCount == 1 ? "" : "s")}) | {envTag} {_probeHitCount}/10");
+                string wallLabel = $"{_wallHitCount} wall{(_wallHitCount == 1 ? "" : "s")}";
+                string labelText = $"Occ: {OcclusionFactor:F2} ({wallLabel})\n" +
+                                   $"Status: {envTag} ({_probeHitCount}/10)";
+                Handles.Label(audioGizmoPos + Vector3.up * 0.3f, labelText, labelStyle);
             }
             else if (!Application.isPlaying)
             {
@@ -671,24 +679,22 @@ public class DebugEmitter : MonoBehaviour
             Gizmos.color = spColor;
             Gizmos.DrawSphere(DisplacedAudioPosition, 0.2f);
 
-            Handles.color = Color.white;
             Handles.Label(
                 (emitterPos + DisplacedAudioPosition) * 0.5f,
-                $"Disp: {DisplacementDistance:F1}m  {_currentVelocity.magnitude:F1}m/s");
+                $"Disp: {DisplacementDistance:F1}m  {_currentVelocity.magnitude:F1}m/s",
+                labelStyle);
         }
 
         // ── Min distance sphere + label ──────────────────────────────────────
         Gizmos.color  = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
         Gizmos.DrawWireSphere(emitterPos, minDist);
-        Handles.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
-        Handles.Label(emitterPos + Vector3.right * minDist, $"Min Range  {minDist:F1}m");
+        Handles.Label(emitterPos + Vector3.right * minDist, $"Min Range  {minDist:F1}m", labelStyle);
 
         // ── Max distance sphere + label ──────────────────────────────────────
         Color maxColor = Color.HSVToRGB(hue, 0.4f, 0.9f);
         Gizmos.color  = new Color(maxColor.r, maxColor.g, maxColor.b, 0.45f);
         Gizmos.DrawWireSphere(emitterPos, maxDist);
-        Handles.color = new Color(maxColor.r, maxColor.g, maxColor.b, 1f);
-        Handles.Label(emitterPos + Vector3.right * maxDist, $"Max Range  {maxDist:F1}m");
+        Handles.Label(emitterPos + Vector3.right * maxDist, $"Max Range  {maxDist:F1}m", labelStyle);
 
         // ── Pulsing sound-wave ring ───────────────────────────────────────────
         if (Application.isPlaying)
@@ -765,9 +771,8 @@ public class DebugEmitter : MonoBehaviour
         }
 
         // ── Emitter label ─────────────────────────────────────────────────────
-        Handles.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
         Handles.Label(emitterPos + Vector3.up * (minDist + 0.25f),
-            $"{gameObject.name}\nVol: {effVol:F2}");
+            $"{gameObject.name}\nVol: {effVol:F2}", labelStyle);
     }
 #endif
 }
