@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine.InputSystem;
 
 public class AudioDirectionVisualizer : MonoBehaviour
 {
@@ -14,6 +15,10 @@ public class AudioDirectionVisualizer : MonoBehaviour
     
     [Header("Fade")]
     public float fadeOutDuration = 0.5f;
+    
+    [Header("Toggle")]
+    public Key toggleKey = Key.V;
+    public bool visualizerEnabled = true;
 
     private Material glMaterial;
 
@@ -43,6 +48,9 @@ public class AudioDirectionVisualizer : MonoBehaviour
 
     void Update()
     {
+        if (Keyboard.current != null && Keyboard.current[toggleKey].wasPressedThisFrame)
+            visualizerEnabled = !visualizerEnabled;
+        
         if (AudioManager.Instance == null) return;
 
         var activeEmitters = AudioManager.Instance.ActiveEmitters;
@@ -98,6 +106,7 @@ public class AudioDirectionVisualizer : MonoBehaviour
 
     void OnGUI()
     {
+        if (!visualizerEnabled) return;
         if (Event.current.type != EventType.Repaint) return;
         if (!AudioManager.DebugEnabled) return;
         if (AudioManager.Instance == null) return;

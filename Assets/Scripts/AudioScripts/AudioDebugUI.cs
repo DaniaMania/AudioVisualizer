@@ -6,6 +6,7 @@ public class AudioDebugUI : MonoBehaviour
     [SerializeField] private Key toggleKey = Key.F1;
     
     public MinimapController minimap;
+    public AudioDirectionVisualizer visualizer;
 
     private GUIStyle headerStyle;
     private GUIStyle rowStyle;
@@ -49,6 +50,15 @@ public class AudioDebugUI : MonoBehaviour
         string buttonLabel = AudioManager.DebugEnabled ? $"Debug: ON [{toggleKey}]" : $"Debug: OFF [{toggleKey}]";
         if (GUI.Button(new Rect(WINDOW_X, WINDOW_Y, 145f, 26f), buttonLabel, buttonStyle))
             AudioManager.Instance.ToggleDebug();
+
+        if (visualizer != null)
+        {
+            string vizLabel = visualizer.visualizerEnabled
+                ? $"Direction: ON [{visualizer.toggleKey}]"
+                : $"Direction: OFF [{visualizer.toggleKey}]";
+            if (GUI.Button(new Rect(WINDOW_X + 155f, WINDOW_Y, 175f, 26f), vizLabel, buttonStyle))
+                visualizer.visualizerEnabled = !visualizer.visualizerEnabled;
+        }
 
         if (!AudioManager.DebugEnabled)
             return;
