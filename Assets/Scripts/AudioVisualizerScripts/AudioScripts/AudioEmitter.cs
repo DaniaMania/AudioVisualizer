@@ -32,6 +32,7 @@ public class AudioEmitter : MonoBehaviour
 
         if (loop)
         {
+            if (AudioManager.Instance == null) return;
             AudioClip clip = AudioManager.Instance.GetClip(clipLabel);
             if (clip != null)
             {
@@ -65,6 +66,7 @@ public class AudioEmitter : MonoBehaviour
 
     void Play()
     {
+        if (AudioManager.Instance == null) return;
         AudioClip clip = AudioManager.Instance.GetClip(clipLabel);
         if (clip == null) return;
 

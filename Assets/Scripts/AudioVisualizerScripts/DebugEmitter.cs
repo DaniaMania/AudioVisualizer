@@ -76,6 +76,20 @@ public class DebugEmitter : MonoBehaviour
     [Tooltip("Pitch multiplier applied when the listener is at Max Distance.")]
     [SerializeField][Range(0.5f, 2f)] private float pitchAtMaxDistance = 0.9f;
 
+    // ── Reverb ────────────────────────────────────────────────────────────────
+    [Header("Reverb")]
+    [Tooltip("Drive an AudioReverbFilter using Sabine's formula derived from the 10 environment probe rays. " +
+             "Works standalone or alongside Occlusion — probe rays run automatically when either system is active.")]
+    [SerializeField] private bool  reverbEnabled      = false;
+    [Tooltip("Wet/dry mix for the reverb effect (0 = fully dry, 1 = full reverb).")]
+    [SerializeField][Range(0f, 1f)] private float reverbWetLevel = 1f;
+    [Tooltip("Absorption coefficient of surrounding surfaces. " +
+             "0.05 = hard concrete / tile (long RT60); 0.95 = heavy curtains / foam (very short RT60).")]
+    [SerializeField][Range(0.05f, 0.95f)] private float surfaceAbsorption = 0.2f;
+    [Tooltip("How quickly the reverb parameters blend toward their computed targets. " +
+             "0.5 = slow, smooth fade (~2 s); 8 = snappy (~0.1 s).")]
+    [SerializeField][Range(0.5f, 10f)] private float reverbSmoothSpeed = 1.5f;
+
     // ── Private runtime state ─────────────────────────────────────────────────
     private AudioSource   audioSource;
     private AudioListener _listener;
@@ -86,16 +100,38 @@ public class DebugEmitter : MonoBehaviour
     private RaycastHit[] _reverseHitBuffer; // reverse ray hits (emitter→listener, for exit points)
     private int          _wallHitCount;    // unique walls this frame (for gizmo display)
     private float        _totalWallThickness; // sum of wall thicknesses in meters this frame
+    private float        _wallEquivalents;    // _totalWallThickness / referenceThickness — shared with reverb
 
     // Occlusion — environment probe (10 rays outward from emitter)
-    private RaycastHit[] _probeHitBuffer; // scratch buffer shared across all probe rays
-    private int          _probeHitCount;  // how many of the 10 rays hit geometry this frame
+    private RaycastHit[] _probeHitBuffer;              // scratch buffer shared across all probe rays
+    private int          _probeHitCount;               // how many of the 10 rays hit geometry this frame
+    private readonly float[] _probeHitDistances = new float[10]; // distance to closest hit per ray (probe distance if miss)
+
+    // Reverb — first-order bounce paths (emitter → wall → listener)
+    // Computed by ComputeBounceReflections; consumed by ComputeReverbParameters.
+    private int   _validBounceCount = 0;    // how many probe hits have line-of-sight to listener
+    private float _minBouncePath    = 0f;   // shortest total path (m) — drives reflectionsDelay
+    private float _avgBouncePath    = 0f;   // mean path length (m)   — drives reverbDelay + RT60
+    private float _bouncePathStdDev = 0f;   // std-dev of path lengths — drives diffusion
 
     // Occlusion — smoothed values applied to audio (targets set by raycasts each frame)
     private float _smoothedOcclusionFactor = 1f;
     private float _smoothedFilterT         = 0f;
     private AudioLowPassFilter _lowPassFilter;
     private AudioLowPassFilter _proxyLowPassFilter;
+
+    // Reverb — AudioReverbFilter driven by Sabine's formula
+    private AudioReverbFilter _reverbFilter;
+    private AudioReverbFilter _proxyReverbFilter;
+    private float _smoothedRoomLevel    = -10000f;
+    private float _smoothedDecayTime    =     0.3f;
+    private float _smoothedDecayHFRatio =     0.5f;
+    private float _smoothedReflLevel    = -10000f;
+    private float _smoothedReflDelay    =     0.02f;
+    private float _smoothedReverb       = -10000f;
+    private float _smoothedReverbDelay  =     0.04f;
+    private float _smoothedDiffusion    =    50f;
+    private float _smoothedDensity      =    50f;
 
     // Fixed world-space probe directions: 8 horizontal (45° steps) + up + down
     private static readonly Vector3[] ProbeDirs = BuildProbeDirs();
@@ -140,6 +176,9 @@ public class DebugEmitter : MonoBehaviour
     // read by OnDrawGizmos. One entry per probe ray (10 total).
     private readonly bool[]    _probeRayDidHit    = new bool[10];
     private readonly Vector3[] _probeRayHitPoints = new Vector3[10];
+
+    // Bounce-path gizmo state — which probe rays produced a valid listener reflection.
+    private readonly bool[]    _probeIsBounce     = new bool[10];
 #endif
 
     // ── Public properties (read by AudioDebugUI) ──────────────────────────────
@@ -151,7 +190,7 @@ public class DebugEmitter : MonoBehaviour
     public Vector3 DisplacedAudioPosition { get; private set; }
     public float   CurrentPitch           { get; private set; } = 1f;
     public float   CurrentLowPassCutoff   { get; private set; } = 22000f;
-    public float   ReverbDecayTime        => 0f; // not yet implemented
+    public float   ReverbDecayTime        { get; private set; } = 0f;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -179,6 +218,10 @@ public class DebugEmitter : MonoBehaviour
         if (TryGetComponent<AudioLowPassFilter>(out var staleFilter))
             Destroy(staleFilter);
         _lowPassFilter = null;
+
+        if (TryGetComponent<AudioReverbFilter>(out var staleReverb))
+            Destroy(staleReverb);
+        _reverbFilter = null;
 
         if (volumeGradient == null || volumeGradient.colorKeys.Length == 0)
             InitializeDefaultGradient();
@@ -256,6 +299,13 @@ public class DebugEmitter : MonoBehaviour
             _lowPassFilter.lowpassResonanceQ = 1f;
         }
 
+        if (_reverbFilter != null)
+            _reverbFilter.reverbPreset = AudioReverbPreset.Off;
+        if (_proxyReverbFilter != null)
+            _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
+
+        ReverbDecayTime = 0f;
+
 #if UNITY_EDITOR
         EditorApplication.update -= SceneView.RepaintAll;
 #endif
@@ -327,14 +377,15 @@ public class DebugEmitter : MonoBehaviour
                 // wallEquivalents is continuous: total thickness / reference thickness.
                 // A thin corner (0.1 m) with reference 0.5 m = 0.2 equivalents → mild occlusion.
                 // A full wall (0.5 m+) = 1.0+ equivalents → full single-wall occlusion.
-                float wallEquivalents = _totalWallThickness / Mathf.Max(occlusionThicknessReference, 0.001f);
+                // Stored as a field so ComputeReverbParameters can read it when both systems are on.
+                _wallEquivalents = _totalWallThickness / Mathf.Max(occlusionThicknessReference, 0.001f);
 
                 targetOcclusionFactor = Mathf.Max(
-                    Mathf.Pow(occlusionVolumeMultiplier, wallEquivalents),
+                    Mathf.Pow(occlusionVolumeMultiplier, _wallEquivalents),
                     occlusionVolumeFloor);
 
                 IndoorRatio = ComputeEnvironmentProbe(audioPos);
-                float wallFilterT = 1f - Mathf.Exp(-3f * wallEquivalents);
+                float wallFilterT = 1f - Mathf.Exp(-3f * _wallEquivalents);
                 targetFilterT = Mathf.Clamp01(
                     wallFilterT + IndoorRatio * 0.15f * (1f - wallFilterT));
 
@@ -349,6 +400,7 @@ public class DebugEmitter : MonoBehaviour
                 // always starts from an unoccluded baseline (no pop on entry).
                 _wallHitCount            = 0;
                 _probeHitCount           = 0;
+                _wallEquivalents         = 0f;
                 IndoorRatio              = 0f;
                 _smoothedOcclusionFactor = 1f;
                 _smoothedFilterT         = 0f;
@@ -390,6 +442,7 @@ public class DebugEmitter : MonoBehaviour
             _smoothedFilterT         = 0f;
             _wallHitCount            = 0;
             _probeHitCount           = 0;
+            _wallEquivalents         = 0f;
             CurrentLowPassCutoff     = 22000f;
             if (srcIsPlaying)
                 audioSource.volume = _naturalVolume;
@@ -402,6 +455,35 @@ public class DebugEmitter : MonoBehaviour
             {
                 _proxyLowPassFilter.cutoffFrequency   = 22000f;
                 _proxyLowPassFilter.lowpassResonanceQ = 1f;
+            }
+        }
+
+        // ── 4b. Reverb (Sabine's formula from 10 environment probe rays) ────────
+        // Works with or without occlusion — runs its own probe pass when needed.
+        bool reverbInRange = reverbEnabled && DistanceToListener <= audioSource.maxDistance;
+        if (reverbInRange)
+        {
+            // If occlusion was disabled, probe data hasn't been gathered yet this frame
+            if (!occlusionEnabled)
+                IndoorRatio = ComputeEnvironmentProbe(audioPos);
+
+            // Cast one visibility ray per probe hit → actual first-order reflection paths
+            ComputeBounceReflections(audioPos, _listener.transform.position);
+            EnsureReverbFilter();
+            ComputeReverbParameters();
+        }
+        else
+        {
+            ReverbDecayTime = 0f;
+            if (_reverbFilter != null)
+            {
+                _reverbFilter.reverbPreset = AudioReverbPreset.Off;
+                _reverbFilter.room         = -10000f;
+            }
+            if (_proxyReverbFilter != null)
+            {
+                _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
+                _proxyReverbFilter.room         = -10000f;
             }
         }
 
@@ -464,6 +546,198 @@ public class DebugEmitter : MonoBehaviour
         if (!TryGetComponent(out _lowPassFilter))
             _lowPassFilter = gameObject.AddComponent<AudioLowPassFilter>();
         _lowPassFilter.cutoffFrequency = 22000f;
+    }
+
+    // Lazy-add AudioReverbFilter to the main source (and proxy if Doppler is active).
+    // Same timing rationale as EnsureLowPassFilter — added after playback starts.
+    private void EnsureReverbFilter()
+    {
+        if (_reverbFilter == null)
+        {
+            if (!TryGetComponent(out _reverbFilter))
+                _reverbFilter = gameObject.AddComponent<AudioReverbFilter>();
+            _reverbFilter.reverbPreset = AudioReverbPreset.Off;
+        }
+
+        if (_proxyGO != null && _proxyReverbFilter == null)
+        {
+            if (!_proxyGO.TryGetComponent(out _proxyReverbFilter))
+                _proxyReverbFilter = _proxyGO.AddComponent<AudioReverbFilter>();
+            _proxyReverbFilter.reverbPreset = AudioReverbPreset.Off;
+        }
+    }
+
+    // Physics-based reverb using Sabine's reverberation formula:
+    //   RT60 ≈ 0.054 × V / (S × α)  →  simplified to  0.054 × avgDist / α × IndoorRatio
+    // All 9 AudioReverbFilter parameters are driven from probe ray geometry and smoothed
+    // over time so the reverb tail evolves naturally as the listener moves through space.
+    private void ComputeReverbParameters()
+    {
+        // Gather statistics from the 10 probe rays that hit geometry
+        float sumDist = 0f, minDist = float.MaxValue, sumSq = 0f;
+        int   n       = 0;
+        for (int i = 0; i < 10; i++)
+        {
+            float d = _probeHitDistances[i];
+            if (d < occlusionProbeDistance - 0.01f) // ray actually hit a surface
+            {
+                sumDist += d;
+                sumSq   += d * d;
+                if (d < minDist) minDist = d;
+                n++;
+            }
+        }
+
+        if (n == 0 || IndoorRatio < 0.05f)
+        {
+            // Fully outdoors — fade reverb out
+            ReverbDecayTime = 0f;
+            float t0 = reverbSmoothSpeed * Time.deltaTime;
+            _smoothedRoomLevel = Mathf.Lerp(_smoothedRoomLevel, -10000f, t0);
+            _smoothedReverb    = Mathf.Lerp(_smoothedReverb,    -10000f, t0);
+            if (_reverbFilter      != null) _reverbFilter.room      = _smoothedRoomLevel;
+            if (_proxyReverbFilter != null) _proxyReverbFilter.room = _smoothedRoomLevel;
+            return;
+        }
+
+        float avgDist      = sumDist / n;
+        float variance     = (sumSq / n) - (avgDist * avgDist);
+        float stdDev       = Mathf.Sqrt(Mathf.Max(0f, variance));
+        float normalizedStd = Mathf.Clamp01(stdDev / Mathf.Max(avgDist, 0.001f));
+
+        // ── Occlusion × reverb integration ───────────────────────────────────
+        // When occlusion is also active, walls don't just block direct sound — they
+        // also absorb the reverberant field reaching the listener.
+        // wallAbsorption = 0 when no walls, 1 when fully buried (exponential falloff).
+        float wallAbsorption = occlusionEnabled
+            ? 1f - Mathf.Exp(-_wallEquivalents * 1.5f)   // 1 wall-equiv → ~78 % absorbed
+            : 0f;
+
+        // ── Sabine RT60 ───────────────────────────────────────────────────────
+        // Scaled by IndoorRatio so the tail is nearly absent outdoors and full indoors.
+        // Walls shorten the perceived tail because they absorb it before it arrives.
+        float targetDecayTime = Mathf.Clamp(
+            0.054f * avgDist / Mathf.Max(surfaceAbsorption, 0.001f) * IndoorRatio
+                * Mathf.Lerp(1f, 0.25f, wallAbsorption),
+            0.5f, 10f);   // 0.5 s minimum — anything shorter isn't perceptible as reverb
+
+        // ── Early reflections: driven by actual bounce path geometry ─────────
+        // When ComputeBounceReflections found valid paths we use those measured
+        // distances.  If no paths exist (fully open room) we fall back to the
+        // nearest probe-hit distance so there's always a sensible starting value.
+        bool hasBounces = _validBounceCount > 0;
+
+        // Time for the first reflection to reach the listener (seconds)
+        float firstArrivalDist  = hasBounces ? _minBouncePath : 2f * minDist;
+        float targetReflDelay   = Mathf.Clamp(firstArrivalDist / 343f, 0f, 0.3f);
+
+        // Late-reverb onset: average path time gives a more realistic gap between
+        // early reflections and the diffuse tail
+        float avgArrivalDist    = hasBounces ? _avgBouncePath : avgDist * 2f;
+        float targetReverbDelay = Mathf.Clamp(avgArrivalDist / 343f, 0f, 0.1f);
+
+        // ── HF decay ─────────────────────────────────────────────────────────
+        // Hard surfaces (low α) bounce HF well → high ratio.
+        // Occlusion walls absorb HF further when both systems are on.
+        float hardnessRatio      = Mathf.Lerp(0.5f, 1.0f, 1f - surfaceAbsorption);
+        float targetDecayHFRatio = Mathf.Clamp(
+            Mathf.Lerp(0.5f, hardnessRatio, IndoorRatio) * Mathf.Lerp(1f, 0.4f, wallAbsorption),
+            0.1f, 2f);
+
+        // ── Diffusion: spread of bounce path lengths → how irregular the room is ──
+        // More variance in path lengths = more diffuse, scattered tail.
+        float bounceSpread   = hasBounces
+            ? Mathf.Clamp01(_bouncePathStdDev / Mathf.Max(_avgBouncePath, 0.001f))
+            : normalizedStd;
+        float targetDiffusion = Mathf.Lerp(15f, 100f, bounceSpread) * IndoorRatio;
+
+        // ── Density: fraction of probe rays that produced a valid bounce ──────
+        // More bouncing walls surrounding you = denser early-reflection cluster.
+        float bounceRatio   = hasBounces ? (float)_validBounceCount / 10f : 0f;
+        float targetDensity = Mathf.Lerp(10f, 100f, bounceRatio) * IndoorRatio;
+
+        // ── Wet levels ────────────────────────────────────────────────────────
+        // Problem with the old approach: lerping from -10000 meant any IndoorRatio < 1
+        // produced levels around -20 to -40 dB — inaudible.
+        //
+        // Fix: IndoorRatio only drives RT60 / diffusion / density (above).
+        //      Wet levels use a narrow, always-audible range (-2000 to -300 mB).
+        //      wallWetScale (occlusion) dims the tail when walls block the path.
+        //      reverbWetLevel is the user's slider for overall mix.
+        float wallWetScale  = Mathf.Lerp(1f, 0f, wallAbsorption);
+        float effectiveWet  = reverbWetLevel * wallWetScale;   // 0–1, user × occlusion
+
+        float targetRoomLevel;
+        float targetReverbLevel;
+        float targetReflLevel;
+
+        if (effectiveWet > 0.01f)
+        {
+            // room: -2000 mB (-20 dB) at low wet → -300 mB (-3 dB) at full wet.
+            // Always audible — no lerp from -10000.
+            targetRoomLevel = Mathf.Lerp(-2000f, -300f, effectiveWet);
+
+            // reverbLevel: goes POSITIVE to boost the diffuse tail above room.
+            // 0 bounces → no late tail; full bounces → +12 dB boost over room floor.
+            targetReverbLevel = Mathf.Lerp(-500f, 1200f, bounceRatio * effectiveWet);
+
+            // reflectionsLevel: early echoes, audible once bounce paths exist.
+            targetReflLevel = hasBounces
+                ? Mathf.Lerp(-1500f, 200f, bounceRatio * effectiveWet)
+                : -10000f;
+        }
+        else
+        {
+            // Reverb disabled or fully occluded — fade to silence.
+            targetRoomLevel   = -10000f;
+            targetReverbLevel = -10000f;
+            targetReflLevel   = -10000f;
+        }
+
+        // ── roomHF: bright HF on hard surfaces, dark on soft ─────────────────
+        float targetRoomHF = Mathf.Lerp(-1500f, 0f, (1f - surfaceAbsorption) * wallWetScale);
+
+        // ── Smooth all parameters ─────────────────────────────────────────────
+        float t = reverbSmoothSpeed * Time.deltaTime;
+        _smoothedDecayTime    = Mathf.Lerp(_smoothedDecayTime,    targetDecayTime,    t);
+        _smoothedDecayHFRatio = Mathf.Lerp(_smoothedDecayHFRatio, targetDecayHFRatio, t);
+        _smoothedReflDelay    = Mathf.Lerp(_smoothedReflDelay,    targetReflDelay,    t);
+        _smoothedReverbDelay  = Mathf.Lerp(_smoothedReverbDelay,  targetReverbDelay,  t);
+        _smoothedDiffusion    = Mathf.Lerp(_smoothedDiffusion,    targetDiffusion,    t);
+        _smoothedDensity      = Mathf.Lerp(_smoothedDensity,      targetDensity,      t);
+        _smoothedRoomLevel    = Mathf.Lerp(_smoothedRoomLevel,    targetRoomLevel,    t);
+        _smoothedReflLevel    = Mathf.Lerp(_smoothedReflLevel,    targetReflLevel,    t);
+        _smoothedReverb       = Mathf.Lerp(_smoothedReverb,       targetReverbLevel,  t);
+
+        ReverbDecayTime = _smoothedDecayTime;
+
+        // ── Apply to whichever filter is active ───────────────────────────────
+        // When Doppler displacement is on the proxy source is the audible one.
+        AudioReverbFilter target = (dopplerEnabled && _proxyReverbFilter != null)
+            ? _proxyReverbFilter : _reverbFilter;
+
+        if (target == null) return;
+
+        target.reverbPreset      = AudioReverbPreset.User;
+        target.room              = _smoothedRoomLevel;
+        target.roomHF            = targetRoomHF;   // live — no smoothed state needed, it tracks fast
+        target.decayTime         = _smoothedDecayTime;
+        target.decayHFRatio      = _smoothedDecayHFRatio;
+        target.reflectionsLevel  = _smoothedReflLevel;
+        target.reflectionsDelay  = _smoothedReflDelay;
+        target.reverbLevel       = _smoothedReverb;
+        target.reverbDelay       = _smoothedReverbDelay;
+        target.diffusion         = _smoothedDiffusion;
+        target.density           = _smoothedDensity;
+
+        // Keep the non-active filter silent so swapping between proxy/direct is seamless
+        AudioReverbFilter silent = (dopplerEnabled && _proxyReverbFilter != null)
+            ? _reverbFilter : _proxyReverbFilter;
+        if (silent != null)
+        {
+            silent.reverbPreset = AudioReverbPreset.Off;
+            silent.room         = -10000f;
+        }
     }
 
     // Single ray from listener to emitter — counts unique walls in between.
@@ -555,6 +829,9 @@ public class DebugEmitter : MonoBehaviour
                 }
             }
 
+            // Store distance for Sabine reverb computation (runtime, not editor-only)
+            _probeHitDistances[i] = didHit ? closest : occlusionProbeDistance;
+
             if (didHit) hitCount++;
 #if UNITY_EDITOR
             _probeRayDidHit[i]    = didHit;
@@ -564,6 +841,77 @@ public class DebugEmitter : MonoBehaviour
 
         _probeHitCount = hitCount;
         return hitCount / 10f;
+    }
+
+    // For each of the 10 probe-ray wall hits, check whether the listener has
+    // line-of-sight from that point.  If yes, emitter→wall→listener is a valid
+    // first-order reflection path, and its total length drives the reverb delays
+    // and levels more accurately than pure room-size estimation.
+    //
+    // Cost: up to 10 Physics.Linecast calls per frame — acceptable for a debug tool.
+    private void ComputeBounceReflections(Vector3 emitterPos, Vector3 listenerPos)
+    {
+        int   count     = 0;
+        float sumPath   = 0f;
+        float sumPathSq = 0f;
+        float minPath   = float.MaxValue;
+
+        for (int i = 0; i < 10; i++)
+        {
+#if UNITY_EDITOR
+            _probeIsBounce[i] = false;
+#endif
+            float wallDist = _probeHitDistances[i];
+            if (wallDist >= occlusionProbeDistance - 0.01f) continue; // ray missed all geometry
+
+            // World-space point on the wall surface
+            Vector3 wallPoint = emitterPos + ProbeDirs[i] * wallDist;
+
+            // Offset slightly toward the listener so the origin doesn't sit inside
+            // the wall face and immediately self-intersect
+            Vector3 toListener   = listenerPos - wallPoint;
+            float   listenerDist = toListener.magnitude;
+            if (listenerDist < 0.1f) continue;
+
+            Vector3 safeOrigin = wallPoint + (toListener / listenerDist) * 0.05f;
+
+            // Visibility check: is anything blocking the path from wall to listener?
+            // Cast stops 0.1 m short of the listener to avoid hitting the listener's collider.
+            bool blocked = Physics.Raycast(
+                safeOrigin,
+                toListener / listenerDist,
+                listenerDist - 0.1f,
+                occlusionLayerMask,
+                QueryTriggerInteraction.Ignore);
+
+            if (blocked) continue;
+
+            float totalPath = wallDist + listenerDist;
+            count++;
+            sumPath   += totalPath;
+            sumPathSq += totalPath * totalPath;
+            if (totalPath < minPath) minPath = totalPath;
+
+#if UNITY_EDITOR
+            _probeIsBounce[i] = true;
+#endif
+        }
+
+        _validBounceCount = count;
+
+        if (count > 0)
+        {
+            _avgBouncePath  = sumPath / count;
+            float variance  = (sumPathSq / count) - (_avgBouncePath * _avgBouncePath);
+            _bouncePathStdDev = Mathf.Sqrt(Mathf.Max(0f, variance));
+            _minBouncePath    = minPath;
+        }
+        else
+        {
+            _avgBouncePath    = 0f;
+            _bouncePathStdDev = 0f;
+            _minBouncePath    = 0f;
+        }
     }
 
     // Walk up the transform hierarchy — needed because the listener is often on a
@@ -915,6 +1263,31 @@ public class DebugEmitter : MonoBehaviour
                 foreach (Vector3 d in ProbeDirs)
                     Handles.DrawDottedLine(emitterPos, emitterPos + d * occlusionProbeDistance, 4f);
             }
+        }
+
+        // ── Reverb bounce paths (emitter → wall → listener) ──────────────────
+        // Cyan two-segment lines show first-order reflections that reach the listener.
+        if (reverbEnabled && Application.isPlaying && listenerInRange && _validBounceCount > 0)
+        {
+            Color bounceColor = new Color(0f, 0.85f, 1f, 0.75f);
+            for (int i = 0; i < 10; i++)
+            {
+                if (!_probeIsBounce[i]) continue;
+
+                Vector3 wallPoint = emitterPos + ProbeDirs[i] * _probeHitDistances[i];
+
+                Handles.color = bounceColor;
+                Handles.DrawAAPolyLine(2f, emitterPos, wallPoint);   // emitter → wall
+                Handles.DrawAAPolyLine(2f, wallPoint,  listenerPos); // wall → listener
+
+                Gizmos.color = bounceColor;
+                Gizmos.DrawSphere(wallPoint, 0.1f);
+            }
+
+            Handles.Label(
+                audioGizmoPos + Vector3.up * 0.3f + Vector3.right * 0.5f,
+                $"Bounces: {_validBounceCount}/10  RT60: {ReverbDecayTime:F2}s",
+                labelStyle);
         }
 
         // ── Doppler displacement arrow ────────────────────────────────────────
