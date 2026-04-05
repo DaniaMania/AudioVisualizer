@@ -59,6 +59,7 @@ public class AudioDirectionVisualizer : MonoBehaviour
         foreach (DebugEmitter e in activeEmitters)
         {
             if (e == null || e.excludeFromUI) continue;
+            if (e.GetComponent<AmbientZoneSpline>() != null) continue; // zones have their own gizmo
             if (!states.Exists(s => s.emitter == e))
                 states.Add(new EmitterState { emitter = e });
         }
@@ -68,6 +69,7 @@ public class AudioDirectionVisualizer : MonoBehaviour
         foreach (EmitterState state in states)
         {
             if (state.emitter == null || state.emitter.excludeFromUI) continue;
+            if (state.emitter.GetComponent<AmbientZoneSpline>() != null) continue;
 
             AudioSource src = state.emitter.GetComponent<AudioSource>();
             if (src == null) continue;
@@ -121,6 +123,7 @@ public class AudioDirectionVisualizer : MonoBehaviour
         {
             if (state.alpha <= 0f) continue;
             if (state.emitter == null || state.emitter.excludeFromUI) continue;
+            if (state.emitter.GetComponent<AmbientZoneSpline>() != null) continue;
 
             AudioSource src = state.emitter.GetComponent<AudioSource>();
             if (src == null) continue;
