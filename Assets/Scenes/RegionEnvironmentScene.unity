@@ -2836,7 +2836,7 @@ MonoBehaviour:
   waveSpeed: 6
   excludeFromUI: 0
   occlusionEnabled: 1
-  occlusionVolumeMultiplier: 0.3
+  occlusionVolumeMultiplier: 0.7
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
   occlusionLowPassCutoff: 800
@@ -5059,7 +5059,7 @@ MonoBehaviour:
   waveSpeed: 6
   excludeFromUI: 0
   occlusionEnabled: 0
-  occlusionVolumeMultiplier: 0.3
+  occlusionVolumeMultiplier: 0.7
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
   occlusionLowPassCutoff: 800
