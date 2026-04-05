@@ -1,0 +1,10 @@
+# Prefabs
+
+Place your two prefab files here:
+
+- AudioSystem.prefab   — drag from Assets/AudioDebugPackage/Prefabs/
+- MinimapRig.prefab    — drag from Assets/AudioDebugPackage/Prefabs/
+
+The Setup Wizard looks for them at:
+  Packages/com.audiodebug/Prefabs/AudioSystem.prefab
+  Packages/com.audiodebug/Prefabs/MinimapRig.prefab
