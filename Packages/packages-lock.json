@@ -1,14 +1,5 @@
 {
   "dependencies": {
-    "com.audiodebug": {
-      "version": "file:C:/Users/do200/Downloads/com.audiodebug/com.audiodebug",
-      "depth": 0,
-      "source": "local",
-      "dependencies": {
-        "com.unity.inputsystem": "1.7.0",
-        "com.unity.render-pipelines.universal": "17.0.0"
-      }
-    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,
