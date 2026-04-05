@@ -2998,7 +2998,6 @@ MonoBehaviour:
   Spline: {fileID: 1966485308}
   Player: {fileID: 1151049023}
   activationDistance: 20
-  fadeSpeed: 3
   waveSpeed: 6
 --- !u!114 &725969699
 MonoBehaviour:
@@ -4067,8 +4066,6 @@ MonoBehaviour:
     clip: {fileID: 8300000, guid: 632beef01ff6ed2459fd05e893e6739d, type: 3}
   - label: Leaves
     clip: {fileID: 8300000, guid: fbf09eef26dcb0f479c31e0a1ec45df6, type: 3}
-  - label: Wind
-    clip: {fileID: 8300000, guid: d9e234ce32969ab439e5047695adbab5, type: 3}
 --- !u!4 &1092018177
 Transform:
   m_ObjectHideFlags: 0
@@ -6574,7 +6571,6 @@ MonoBehaviour:
   Spline: {fileID: 336212001}
   Player: {fileID: 1151049023}
   activationDistance: 20
-  fadeSpeed: 3
   waveSpeed: 6
 --- !u!114 &1746470143
 MonoBehaviour:
@@ -6588,7 +6584,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae22d34d4404a5c47a3c4511292e46d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AudioEmitter
-  clipLabel: Wind
+  clipLabel: Leaves
   playOnStart: 1
   loop: 0
   minInterval: 2
