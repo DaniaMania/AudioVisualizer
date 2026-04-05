@@ -58,9 +58,19 @@ public class AudioDebugUI : MonoBehaviour
         foreach (var e in emitters)
             if (e != null && !e.excludeFromUI) count++;
 
+        var zones = AudioManager.Instance.ActiveZones;
+        int zoneCount = 0;
+        for (int i = 0; i < zones.Count; i++)
+            if (zones[i] != null) zoneCount++;
+
+        // Zones section: separator + column header + one row per zone
+        float zoneSectionHeight = zoneCount > 0
+            ? PADDING + 4f + ROW_HEIGHT + PADDING + zoneCount * ROW_HEIGHT
+            : 0f;
+
         float headerHeight = ROW_HEIGHT + PADDING * 2;
-        float rowsHeight = Mathf.Max(count, 1) * ROW_HEIGHT + PADDING;
-        float windowHeight = headerHeight + rowsHeight + 4f;
+        float rowsHeight   = Mathf.Max(count, 1) * ROW_HEIGHT + PADDING;
+        float windowHeight = headerHeight + rowsHeight + zoneSectionHeight + 4f;
         float windowY      = WINDOW_Y + 34f;
 
         Rect windowRect = new Rect(WINDOW_X, windowY, WINDOW_WIDTH, windowHeight);
@@ -101,33 +111,74 @@ public class AudioDebugUI : MonoBehaviour
                 "No DebugEmitters registered. Attach DebugEmitter to an AudioSource GameObject.",
                 rowStyle
             );
-            return;
+            y += ROW_HEIGHT;
+        }
+        else
+        {
+            // Emitter rows
+            for (int i = 0; i < emitters.Count; i++)
+            {
+                DebugEmitter emitter = emitters[i];
+                if (emitter == null) continue;
+                if (emitter.excludeFromUI) continue;
+
+                AudioSource src = emitter.GetComponent<AudioSource>();
+                if (src == null) continue;
+
+                x = WINDOW_X + PADDING;
+                Color swatchColor = DebugEmitter.GetEmitterColor(emitter.gameObject.GetInstanceID());
+                GUI.color = swatchColor;
+                GUI.Box(new Rect(x, y + 3f, 14f, 14f), GUIContent.none, colorSwatchStyle);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(x + 18f, y, COL_NAME - 18f, ROW_HEIGHT), emitter.gameObject.name, rowStyle);
+                x += COL_NAME;
+                GUI.Label(new Rect(x, y, COL_DIST,  ROW_HEIGHT), emitter.DistanceToListener.ToString("F1") + "m", rowStyle); x += COL_DIST;
+                GUI.Label(new Rect(x, y, COL_VOL,   ROW_HEIGHT), emitter.EffectiveVolume.ToString("F2"),           rowStyle); x += COL_VOL;
+                GUI.Label(new Rect(x, y, COL_BLEND, ROW_HEIGHT), src.spatialBlend.ToString("F2"),                  rowStyle); x += COL_BLEND;
+                GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), src.mute ? "YES" : "-",                           rowStyle); x += COL_MUTE;
+                GUI.Label(new Rect(x, y, COL_OCC,   ROW_HEIGHT), emitter.OcclusionFactor.ToString("F2"),           rowStyle); x += COL_OCC;
+                GUI.Label(new Rect(x, y, COL_DISP,  ROW_HEIGHT), emitter.DisplacementDistance.ToString("F1") + "m", rowStyle);
+                y += ROW_HEIGHT;
+            }
         }
 
-        // Emitter rows
-        for (int i = 0; i < emitters.Count; i++)
+        // ── Ambient Zones section ─────────────────────────────────────────────
+        if (zoneCount > 0)
         {
-            DebugEmitter emitter = emitters[i];
-            if (emitter == null) continue;
-            if (emitter.excludeFromUI) continue;
-
-            AudioSource src = emitter.GetComponent<AudioSource>();
-            if (src == null) continue;
+            // Separator + section header
+            y += PADDING;
+            GUI.Box(new Rect(WINDOW_X + PADDING, y + 2f, WINDOW_WIDTH - PADDING * 2f, 1f), GUIContent.none);
+            y += PADDING + 4f;
 
             x = WINDOW_X + PADDING;
-            Color swatchColor = DebugEmitter.GetEmitterColor(emitter.gameObject.GetInstanceID());
-            GUI.color = swatchColor;
-            GUI.Box(new Rect(x, y + 3f, 14f, 14f), GUIContent.none, colorSwatchStyle);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(x + 18f, y, COL_NAME - 18f, ROW_HEIGHT), emitter.gameObject.name, rowStyle);
-            x += COL_NAME;
-            GUI.Label(new Rect(x, y, COL_DIST,  ROW_HEIGHT), emitter.DistanceToListener.ToString("F1") + "m", rowStyle); x += COL_DIST;
-            GUI.Label(new Rect(x, y, COL_VOL,   ROW_HEIGHT), emitter.EffectiveVolume.ToString("F2"),           rowStyle); x += COL_VOL;
-            GUI.Label(new Rect(x, y, COL_BLEND, ROW_HEIGHT), src.spatialBlend.ToString("F2"),                  rowStyle); x += COL_BLEND;
-            GUI.Label(new Rect(x, y, COL_MUTE,  ROW_HEIGHT), src.mute ? "YES" : "-",                            rowStyle); x += COL_MUTE;
-            GUI.Label(new Rect(x, y, COL_OCC,   ROW_HEIGHT), emitter.OcclusionFactor.ToString("F2"),            rowStyle); x += COL_OCC;
-            GUI.Label(new Rect(x, y, COL_DISP,  ROW_HEIGHT), emitter.DisplacementDistance.ToString("F1") + "m", rowStyle);
-            y += ROW_HEIGHT;
+            GUI.Label(new Rect(x, y, COL_NAME, ROW_HEIGHT), "Ambient Zone", headerStyle); x += COL_NAME;
+            GUI.Label(new Rect(x, y, 110f,     ROW_HEIGHT), "Status",       headerStyle); x += 110f;
+            GUI.Label(new Rect(x, y, COL_DIST, ROW_HEIGHT), "Edge Dist.",   headerStyle);
+            y += ROW_HEIGHT + PADDING;
+
+            for (int i = 0; i < zones.Count; i++)
+            {
+                AmbientZoneSpline zone = zones[i];
+                if (zone == null) continue;
+
+                x = WINDOW_X + PADDING;
+                Color swatchColor = DebugEmitter.GetEmitterColor(zone.gameObject.GetInstanceID());
+                GUI.color = swatchColor;
+                GUI.Box(new Rect(x, y + 3f, 14f, 14f), GUIContent.none, colorSwatchStyle);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(x + 18f, y, COL_NAME - 18f, ROW_HEIGHT), zone.gameObject.name, rowStyle);
+                x += COL_NAME;
+
+                string zoneStatus = zone.IsInside  ? "Inside"
+                                 : zone.IsActive  ? "Outside"
+                                 :                  "Out of range";
+                GUI.Label(new Rect(x, y, 110f, ROW_HEIGHT), zoneStatus, rowStyle);
+                x += 110f;
+
+                string dist = zone.IsInside ? "0.0m" : zone.DistToSpline.ToString("F1") + "m";
+                GUI.Label(new Rect(x, y, COL_DIST, ROW_HEIGHT), dist, rowStyle);
+                y += ROW_HEIGHT;
+            }
         }
     }
 

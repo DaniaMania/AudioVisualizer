@@ -35,11 +35,14 @@ public class DebugEmitter : MonoBehaviour
     [Tooltip("Low-pass filter cutoff (Hz) when fully indoors — lower = more muffled (100–1500 Hz). " +
              "22000 disables filtering. 600 Hz is a moderate indoor muffle; 300 Hz is heavy.")]
     [SerializeField] private float occlusionLowPassCutoff = 600f;
-    [Tooltip("Resonance boost at the cutoff when fully indoors (1 = flat, 2–4 = audible character). " +
-             "Makes the indoor timbre noticeable even at low overall volume.")]
-    [SerializeField][Range(1f, 10f)] private float occlusionLowPassResonance = 3f;
+    [Tooltip("Resonance Q at the cutoff frequency (1 = flat / natural muffle, >1 = adds a tonal peak " +
+             "at the cutoff that can sound like 'pshhh' during transitions — keep at 1 for clean walls).")]
+    [SerializeField][Range(1f, 3f)] private float occlusionLowPassResonance = 1f;
     [Tooltip("Which layers count as enclosing geometry. Exclude Player, triggers, water, etc.")]
     [SerializeField] private LayerMask occlusionLayerMask = ~0;
+    [Tooltip("How fast volume and filter blend when moving in/out of occlusion. " +
+             "Lower = slower crossfade (1 = ~1 s), higher = snappier (8 = ~0.1 s).")]
+    [SerializeField][Range(0.5f, 15f)] private float occlusionSmoothSpeed = 4f;
 
     // ── Doppler Displacement ──────────────────────────────────────────────────
     [Header("Doppler Displacement")]
@@ -64,6 +67,10 @@ public class DebugEmitter : MonoBehaviour
     // Occlusion — environment probe (10 rays outward from emitter)
     private RaycastHit[] _probeHitBuffer; // scratch buffer shared across all probe rays
     private int          _probeHitCount;  // how many of the 10 rays hit geometry this frame
+
+    // Occlusion — smoothed values applied to audio (targets set by raycasts each frame)
+    private float _smoothedOcclusionFactor = 1f;
+    private float _smoothedFilterT         = 0f;
     private AudioLowPassFilter _lowPassFilter;
     private AudioLowPassFilter _proxyLowPassFilter;
 
@@ -266,31 +273,50 @@ public class DebugEmitter : MonoBehaviour
         EffectiveVolume = ComputeEffectiveVolume(audioSource, DistanceToListener, _naturalVolume);
 
         // ── 4. Occlusion ─────────────────────────────────────────────────────
-        // Skip all raycasts when the listener is outside the source's max range —
-        // the audio engine already attenuates to silence, so the extra physics work
-        // and gizmo clutter serve no purpose.
         bool inRange = occlusionEnabled && DistanceToListener <= audioSource.maxDistance;
 
-        if (inRange)
+        if (occlusionEnabled)
         {
-            EnsureLowPassFilter();
+            float targetOcclusionFactor;
+            float targetFilterT;
 
-            // ── Volume: driven by walls between listener and emitter ──────────
-            _wallHitCount    = CastWallRay(_listener.transform.position, audioPos);
-            OcclusionFactor  = Mathf.Max(
-                Mathf.Pow(occlusionVolumeMultiplier, _wallHitCount),
-                occlusionVolumeFloor);
+            if (inRange)
+            {
+                // ── Raycasts: compute this frame's targets ────────────────────
+                EnsureLowPassFilter();
+                _wallHitCount       = CastWallRay(_listener.transform.position, audioPos);
+                targetOcclusionFactor = Mathf.Max(
+                    Mathf.Pow(occlusionVolumeMultiplier, _wallHitCount),
+                    occlusionVolumeFloor);
+
+                IndoorRatio = ComputeEnvironmentProbe(audioPos);
+                float wallFilterT = 1f - Mathf.Exp(-3f * _wallHitCount);
+                targetFilterT = Mathf.Clamp01(
+                    wallFilterT + IndoorRatio * 0.3f * (1f - wallFilterT));
+
+                // ── Smooth toward targets ────────────────────────────────────
+                float t = occlusionSmoothSpeed * Time.deltaTime;
+                _smoothedOcclusionFactor = Mathf.Lerp(_smoothedOcclusionFactor, targetOcclusionFactor, t);
+                _smoothedFilterT         = Mathf.Lerp(_smoothedFilterT, targetFilterT, t);
+            }
+            else
+            {
+                // Outside max range — snap smoothed state clean so re-entry
+                // always starts from an unoccluded baseline (no pop on entry).
+                _wallHitCount            = 0;
+                _probeHitCount           = 0;
+                IndoorRatio              = 0f;
+                _smoothedOcclusionFactor = 1f;
+                _smoothedFilterT         = 0f;
+            }
+
+            // ── Apply smoothed values to audio ───────────────────────────────
+            OcclusionFactor  = _smoothedOcclusionFactor;
             EffectiveVolume *= OcclusionFactor;
 
-            // ── Filter: walls snap it hard; indoor environment adds a baseline ─
-            // The 10 probe rays classify the environment (0 = outdoor, 1 = indoor).
-            // Walls dominate when present; indoor probe contributes a subtle ambient
-            // muffling floor (up to 30%) even without a direct wall in the way.
-            IndoorRatio = ComputeEnvironmentProbe(audioPos);
-            float wallFilterT = 1f - Mathf.Exp(-3f * _wallHitCount);
-            float filterT     = Mathf.Clamp01(wallFilterT + IndoorRatio * 0.3f * (1f - wallFilterT));
-            float cutoff      = Mathf.Lerp(22000f, occlusionLowPassCutoff, filterT);
-            float resonance   = Mathf.Lerp(1f, occlusionLowPassResonance, filterT);
+            float cutoff    = Mathf.Lerp(22000f, occlusionLowPassCutoff,  _smoothedFilterT);
+            float resonance = Mathf.Lerp(1f,     occlusionLowPassResonance, _smoothedFilterT);
+
             if (dopplerEnabled && _proxySource != null)
             {
                 _proxySource.volume = _naturalVolume * OcclusionFactor;
@@ -312,11 +338,13 @@ public class DebugEmitter : MonoBehaviour
         }
         else
         {
-            // Out of range or occlusion disabled — reset to clean state
-            OcclusionFactor = 1f;
-            IndoorRatio     = 0f;
-            _wallHitCount   = 0;
-            _probeHitCount  = 0;
+            // Occlusion disabled — snap everything clean immediately
+            OcclusionFactor          = 1f;
+            IndoorRatio              = 0f;
+            _smoothedOcclusionFactor = 1f;
+            _smoothedFilterT         = 0f;
+            _wallHitCount            = 0;
+            _probeHitCount           = 0;
             if (srcIsPlaying)
                 audioSource.volume = _naturalVolume;
             if (_lowPassFilter != null)
@@ -560,14 +588,113 @@ public class DebugEmitter : MonoBehaviour
 #if UNITY_EDITOR
     private void OnDrawGizmos()
     {
-        if (!AudioManager.DebugEnabled) return;
-
         AudioSource src = GetComponent<AudioSource>();
         if (src == null) return;
 
         Vector3 emitterPos = transform.position;
         float   minDist    = src.minDistance;
         float   maxDist    = Mathf.Max(src.maxDistance, minDist + 0.1f);
+
+        // Black bold label style — used for all text in this gizmo
+        var labelStyle = new GUIStyle(GUI.skin.label)
+        {
+            normal    = { textColor = Color.black },
+            fontStyle = FontStyle.Bold
+        };
+
+        // Per-emitter unique color (Wang hash on instance ID)
+        uint uid = (uint)Mathf.Abs(gameObject.GetInstanceID());
+        uid ^= uid >> 16; uid *= 0x45d9f3bu; uid ^= uid >> 16;
+        float hue          = (uid % 360u) / 360f;
+        Color emitterColor = Color.HSVToRGB(hue, 0.9f, 1f);
+        Color maxColor     = Color.HSVToRGB(hue, 0.4f, 0.9f);
+
+        // ── Min / Max distance spheres (always visible — no debug gate) ────────
+        // These appear as soon as the component is placed so designers can see range.
+        Gizmos.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
+        Gizmos.DrawWireSphere(emitterPos, minDist);
+        Handles.Label(emitterPos + Vector3.right * minDist, $"Min Range  {minDist:F1}m", labelStyle);
+
+        Gizmos.color = new Color(maxColor.r, maxColor.g, maxColor.b, 0.45f);
+        Gizmos.DrawWireSphere(emitterPos, maxDist);
+        Handles.Label(emitterPos + Vector3.right * maxDist, $"Max Range  {maxDist:F1}m", labelStyle);
+
+        // ── Pulsing sound-wave ring (always visible) ──────────────────────────
+        if (Application.isPlaying)
+        {
+            // Rising edge
+            if (src.isPlaying && !_wasPlayingLastFrame)
+            {
+                _playStartWallTime = Time.time;
+                if (src.clip == null)
+                {
+                    AudioEmitter ae = GetComponent<AudioEmitter>();
+                    if (ae != null && AudioManager.Instance != null)
+                    {
+                        AudioClip oneShotClip = AudioManager.Instance.GetClip(ae.clipLabel);
+                        _playOneShotClipLength = oneShotClip != null
+                            ? oneShotClip.length : _playOneShotClipLength;
+                    }
+                }
+            }
+
+            // Falling edge: measure actual PlayOneShot duration for next play
+            if (!src.isPlaying && _wasPlayingLastFrame && src.clip == null
+                && _playStartWallTime >= 0f)
+            {
+                float measured = Time.time - _playStartWallTime;
+                if (measured > 0.05f)
+                    _playOneShotClipLength = measured;
+            }
+
+            if (src.isPlaying)
+            {
+                _lastPlayingWallTime = Time.time;
+                if (src.clip != null)
+                    _lastSrcTime = src.time;
+            }
+
+            _wasPlayingLastFrame = src.isPlaying;
+
+            float timeSinceStop = _lastPlayingWallTime < 0f
+                ? float.MaxValue : Time.time - _lastPlayingWallTime;
+            float graceFade = src.isPlaying
+                ? 1f : Mathf.Clamp01(1f - timeSinceStop / 0.5f);
+
+            if (graceFade > 0f)
+            {
+                float progress;
+                if (src.clip != null)
+                {
+                    float effectiveTime = src.isPlaying ? src.time : _lastSrcTime;
+                    progress = Mathf.Clamp01(effectiveTime / src.clip.length);
+                }
+                else
+                {
+                    float elapsed = _playStartWallTime < 0f ? 0f
+                                  : Time.time - _playStartWallTime;
+                    if (_playOneShotClipLength > 0f)
+                        progress = Mathf.Clamp01(elapsed / _playOneShotClipLength);
+                    else
+                    {
+                        float travelDist = Mathf.Max(maxDist - minDist, 0.001f);
+                        float r0 = Mathf.Clamp(minDist + waveSpeed * elapsed, minDist, maxDist);
+                        progress = (r0 - minDist) / travelDist;
+                    }
+                }
+
+                float ringRadius = Mathf.Lerp(minDist, maxDist, progress);
+                float ringAlpha  = (1f - progress) * graceFade * 0.85f;
+                if (ringAlpha > 0.01f)
+                {
+                    Gizmos.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, ringAlpha);
+                    Gizmos.DrawWireSphere(emitterPos, ringRadius);
+                }
+            }
+        }
+
+        // ── Everything below requires debug mode on ───────────────────────────
+        if (!AudioManager.DebugEnabled) return;
 
         // Resolve listener (runtime → edit-mode fallback)
         Vector3   listenerPos       = emitterPos;
@@ -593,19 +720,6 @@ public class DebugEmitter : MonoBehaviour
 
         float dist   = hasListener ? Vector3.Distance(emitterPos, listenerPos) : 0f;
         float effVol = ComputeEffectiveVolume(src, dist);
-
-        // Shared label style — black bold text so it reads clearly on any background
-        var labelStyle = new GUIStyle(GUI.skin.label)
-        {
-            normal    = { textColor = Color.black },
-            fontStyle = FontStyle.Bold
-        };
-
-        // Per-emitter unique color (Wang hash on instance ID)
-        uint uid = (uint)Mathf.Abs(gameObject.GetInstanceID());
-        uid ^= uid >> 16; uid *= 0x45d9f3bu; uid ^= uid >> 16;
-        float hue          = (uid % 360u) / 360f;
-        Color emitterColor = Color.HSVToRGB(hue, 0.9f, 1f);
 
         // Audio position: displaced proxy pos when doppler active, else emitter pos
         Vector3 audioGizmoPos = (Application.isPlaying && dopplerEnabled && _proxyTransform != null)
@@ -694,91 +808,6 @@ public class DebugEmitter : MonoBehaviour
                 (emitterPos + DisplacedAudioPosition) * 0.5f,
                 $"Disp: {DisplacementDistance:F1}m  {_currentVelocity.magnitude:F1}m/s",
                 labelStyle);
-        }
-
-        // ── Min distance sphere + label ──────────────────────────────────────
-        Gizmos.color  = new Color(emitterColor.r, emitterColor.g, emitterColor.b, 1f);
-        Gizmos.DrawWireSphere(emitterPos, minDist);
-        Handles.Label(emitterPos + Vector3.right * minDist, $"Min Range  {minDist:F1}m", labelStyle);
-
-        // ── Max distance sphere + label ──────────────────────────────────────
-        Color maxColor = Color.HSVToRGB(hue, 0.4f, 0.9f);
-        Gizmos.color  = new Color(maxColor.r, maxColor.g, maxColor.b, 0.45f);
-        Gizmos.DrawWireSphere(emitterPos, maxDist);
-        Handles.Label(emitterPos + Vector3.right * maxDist, $"Max Range  {maxDist:F1}m", labelStyle);
-
-        // ── Pulsing sound-wave ring ───────────────────────────────────────────
-        if (Application.isPlaying)
-        {
-            // Rising edge
-            if (src.isPlaying && !_wasPlayingLastFrame)
-            {
-                _playStartWallTime = Time.time;
-                if (src.clip == null)
-                {
-                    AudioEmitter ae = GetComponent<AudioEmitter>();
-                    if (ae != null && AudioManager.Instance != null)
-                    {
-                        AudioClip oneShotClip = AudioManager.Instance.GetClip(ae.clipLabel);
-                        _playOneShotClipLength = oneShotClip != null
-                            ? oneShotClip.length : _playOneShotClipLength;
-                    }
-                }
-            }
-
-            // Falling edge: measure actual PlayOneShot duration for next play
-            if (!src.isPlaying && _wasPlayingLastFrame && src.clip == null
-                && _playStartWallTime >= 0f)
-            {
-                float measured = Time.time - _playStartWallTime;
-                if (measured > 0.05f)
-                    _playOneShotClipLength = measured;
-            }
-
-            if (src.isPlaying)
-            {
-                _lastPlayingWallTime = Time.time;
-                if (src.clip != null)
-                    _lastSrcTime = src.time;
-            }
-
-            _wasPlayingLastFrame = src.isPlaying;
-
-            float timeSinceStop = _lastPlayingWallTime < 0f
-                ? float.MaxValue : Time.time - _lastPlayingWallTime;
-            float graceFade = src.isPlaying
-                ? 1f : Mathf.Clamp01(1f - timeSinceStop / 0.5f);
-
-            if (graceFade > 0f)
-            {
-                float progress;
-                if (src.clip != null)
-                {
-                    float effectiveTime = src.isPlaying ? src.time : _lastSrcTime;
-                    progress = Mathf.Clamp01(effectiveTime / src.clip.length);
-                }
-                else
-                {
-                    float elapsed = _playStartWallTime < 0f ? 0f
-                                  : Time.time - _playStartWallTime;
-                    if (_playOneShotClipLength > 0f)
-                        progress = Mathf.Clamp01(elapsed / _playOneShotClipLength);
-                    else
-                    {
-                        float travelDist = Mathf.Max(maxDist - minDist, 0.001f);
-                        float r0 = Mathf.Clamp(minDist + waveSpeed * elapsed, minDist, maxDist);
-                        progress = (r0 - minDist) / travelDist;
-                    }
-                }
-
-                float ringRadius = Mathf.Lerp(minDist, maxDist, progress);
-                float ringAlpha  = (1f - progress) * graceFade * 0.85f;
-                if (ringAlpha > 0.01f)
-                {
-                    Gizmos.color = new Color(emitterColor.r, emitterColor.g, emitterColor.b, ringAlpha);
-                    Gizmos.DrawWireSphere(emitterPos, ringRadius);
-                }
-            }
         }
 
         // ── Emitter label ─────────────────────────────────────────────────────

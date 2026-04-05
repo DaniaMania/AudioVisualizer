@@ -18,8 +18,11 @@ public class AudioManager : MonoBehaviour
     [SerializeField] private bool debugEnabled = false;
     public static bool DebugEnabled => _instance != null && _instance.debugEnabled;
 
-    private readonly List<DebugEmitter> activeEmitters = new List<DebugEmitter>();
-    public IReadOnlyList<DebugEmitter> ActiveEmitters => activeEmitters;
+    private readonly List<DebugEmitter>      activeEmitters = new List<DebugEmitter>();
+    public IReadOnlyList<DebugEmitter>      ActiveEmitters => activeEmitters;
+
+    private readonly List<AmbientZoneSpline> activeZones    = new List<AmbientZoneSpline>();
+    public IReadOnlyList<AmbientZoneSpline>  ActiveZones    => activeZones;
 
     private AudioListener listener;
     public AudioListener Listener => listener;
@@ -63,6 +66,17 @@ public class AudioManager : MonoBehaviour
     public void Unregister(DebugEmitter emitter)
     {
         activeEmitters.Remove(emitter);
+    }
+
+    public void RegisterZone(AmbientZoneSpline zone)
+    {
+        if (zone != null && !activeZones.Contains(zone))
+            activeZones.Add(zone);
+    }
+
+    public void UnregisterZone(AmbientZoneSpline zone)
+    {
+        activeZones.Remove(zone);
     }
 
     public AudioClip GetClip(string label)
