@@ -99,8 +99,9 @@ public class DebugEmitter : MonoBehaviour
     private bool        _proxyWasPlaying;    // runtime rising/falling edge for SyncProxyPlayback
     private bool        _dopplerWarnedOnce;  // suppress repeated "no AudioEmitter" warnings
 
-    // Volume tracking — prevents occlusion feedback loop
+    // Volume / pitch tracking — prevents occlusion and Doppler feedback loops
     private float _naturalVolume   = 1f;   // volume AudioEmitter intended; captured once per rising edge
+    private float _naturalPitch    = 1f;   // pitch  AudioEmitter intended; captured once per rising edge
     private bool  _srcWasPlayingLU = false; // rising-edge tracker for LateUpdate
 
 #if UNITY_EDITOR
@@ -213,6 +214,7 @@ public class DebugEmitter : MonoBehaviour
         {
             audioSource.mute   = false;
             audioSource.volume = _naturalVolume; // undo any occluded write-back
+            audioSource.pitch  = _naturalPitch;  // undo any Doppler pitch write-back
         }
 
         if (_lowPassFilter != null)
@@ -267,7 +269,10 @@ public class DebugEmitter : MonoBehaviour
         // doing so compounding OcclusionFactor each frame → exponential decay → silence.
         bool srcIsPlaying = audioSource.isPlaying;
         if (srcIsPlaying && !_srcWasPlayingLU)
+        {
             _naturalVolume = audioSource.volume;
+            _naturalPitch  = audioSource.pitch;
+        }
         _srcWasPlayingLU = srcIsPlaying;
 
         EffectiveVolume = ComputeEffectiveVolume(audioSource, DistanceToListener, _naturalVolume);
@@ -357,6 +362,42 @@ public class DebugEmitter : MonoBehaviour
                 _proxyLowPassFilter.cutoffFrequency   = 22000f;
                 _proxyLowPassFilter.lowpassResonanceQ = 1f;
             }
+        }
+
+        // ── 5. Global Doppler pitch shift ─────────────────────────────────────
+        // Pitch rises as the listener moves toward the source, falls when moving away.
+        // Uses listener velocity from AudioManager (smoothed to avoid per-frame jitter).
+        if (AudioManager.DopplerPitchEnabled && _listener != null && AudioManager.Instance != null)
+        {
+            Vector3 toEmitter = audioPos - _listener.transform.position;
+            float pitchShift;
+
+            if (toEmitter.sqrMagnitude > 0.0001f)
+            {
+                // Positive approachSpeed = listener moving toward emitter → pitch up
+                float approachSpeed = Vector3.Dot(
+                    AudioManager.Instance.ListenerVelocity, toEmitter.normalized);
+                pitchShift = 1f + (approachSpeed / AudioManager.PitchSoundSpeed)
+                                 * AudioManager.DopplerPitchStrength;
+                pitchShift = Mathf.Clamp(pitchShift, 0.5f, 2f);
+            }
+            else
+            {
+                pitchShift = 1f; // emitter is at the listener — no shift
+            }
+
+            if (dopplerEnabled && _proxySource != null)
+                _proxySource.pitch = _naturalPitch * pitchShift;
+            else
+                audioSource.pitch  = _naturalPitch * pitchShift;
+        }
+        else
+        {
+            // Global Doppler disabled — restore natural pitch
+            if (dopplerEnabled && _proxySource != null)
+                _proxySource.pitch = _naturalPitch;
+            else
+                audioSource.pitch  = _naturalPitch;
         }
     }
 

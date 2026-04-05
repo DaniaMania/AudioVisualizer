@@ -5766,7 +5766,7 @@ MonoBehaviour:
   maxLineThickness: 8
   waveSpeed: 6
   excludeFromUI: 0
-  occlusionEnabled: 1
+  occlusionEnabled: 0
   occlusionVolumeMultiplier: 0.3
   occlusionVolumeFloor: 0.25
   occlusionProbeDistance: 15
@@ -5776,7 +5776,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   occlusionSmoothSpeed: 4
-  dopplerEnabled: 0
+  dopplerEnabled: 1
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
