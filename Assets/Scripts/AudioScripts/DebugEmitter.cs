@@ -55,6 +55,24 @@ public class DebugEmitter : MonoBehaviour
     [Tooltip("Artistic multiplier — >1 exaggerates the lag for dramatic effect.")]
     [SerializeField] private float dopplerExaggeration     = 1f;
 
+    [Tooltip("Shift pitch based on how fast the listener and emitter are closing in or moving apart " +
+             "(classic Doppler). Only active while Doppler Displacement is enabled.")]
+    [SerializeField] private bool  dopplerPitchEnabled    = true;
+    [Tooltip("Virtual speed of sound for the pitch calculation (m/s). " +
+             "30 gives a noticeable ~7-10 % shift at a brisk walk; 343 is physically accurate " +
+             "but nearly imperceptible at typical game speeds.")]
+    [SerializeField] private float dopplerPitchSoundSpeed = 30f;
+    [Tooltip("Pitch-shift strength multiplier. 1 = physically-scaled by Pitch Sound Speed; " +
+             ">1 = exaggerated; 0 = no shift.")]
+    [SerializeField][Range(0f, 3f)] private float dopplerPitchStrength = 1f;
+    [Tooltip("Also shift pitch based on distance — higher pitch when the listener is close, " +
+             "lower when far. Independent of movement direction.")]
+    [SerializeField] private bool  distancePitchEnabled   = false;
+    [Tooltip("Pitch multiplier applied when the listener is at or inside Min Distance.")]
+    [SerializeField][Range(0.5f, 2f)] private float pitchAtMinDistance = 1.1f;
+    [Tooltip("Pitch multiplier applied when the listener is at Max Distance.")]
+    [SerializeField][Range(0.5f, 2f)] private float pitchAtMaxDistance = 0.9f;
+
     // ── Private runtime state ─────────────────────────────────────────────────
     private AudioSource   audioSource;
     private AudioListener _listener;
@@ -96,8 +114,9 @@ public class DebugEmitter : MonoBehaviour
     private GameObject  _proxyGO;
     private Transform   _proxyTransform;
     private AudioSource _proxySource;
-    private bool        _proxyWasPlaying;    // runtime rising/falling edge for SyncProxyPlayback
-    private bool        _dopplerWarnedOnce;  // suppress repeated "no AudioEmitter" warnings
+    private bool        _proxyWasPlaying;       // runtime rising/falling edge for SyncProxyPlayback
+    private bool        _dopplerWarnedOnce;     // suppress repeated "no AudioEmitter" warnings
+    private float       _prevDistanceToListener = -1f; // -1 = not yet initialized (skips first-frame spike)
 
     // Volume / pitch tracking — prevents occlusion and Doppler feedback loops
     private float _naturalVolume   = 1f;   // volume AudioEmitter intended; captured once per rising edge
@@ -125,6 +144,7 @@ public class DebugEmitter : MonoBehaviour
     public float   IndoorRatio            { get; private set; }       // 0 = outdoor, 1 = indoor
     public float   DisplacementDistance   { get; private set; }
     public Vector3 DisplacedAudioPosition { get; private set; }
+    public float   CurrentPitch           { get; private set; } = 1f;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -133,6 +153,11 @@ public class DebugEmitter : MonoBehaviour
         audioSource         = GetComponent<AudioSource>();
         _rb                 = GetComponent<Rigidbody>();
         _prevPosition       = transform.position;
+
+        // Reset mute in case a previous play-mode session left it serialized as true
+        // (SyncProxyPlayback mutes the main source while Doppler is active; if the scene
+        // was saved in that state the AudioSource retains mute=true across sessions).
+        audioSource.mute = false;
         _wallHitBuffer  = new RaycastHit[16]; // listener→emitter ray; 16 handles dense geometry
         _probeHitBuffer = new RaycastHit[8];  // per-probe-ray scratch; 8 handles clustered geometry
 
@@ -364,41 +389,52 @@ public class DebugEmitter : MonoBehaviour
             }
         }
 
-        // ── 5. Global Doppler pitch shift ─────────────────────────────────────
-        // Pitch rises as the listener moves toward the source, falls when moving away.
-        // Uses listener velocity from AudioManager (smoothed to avoid per-frame jitter).
-        if (AudioManager.DopplerPitchEnabled && _listener != null && AudioManager.Instance != null)
+        // ── 5. Doppler pitch (per-emitter, gated on dopplerEnabled) ──────────
+        // Both velocity-based and distance-based contributions are computed
+        // independently and multiplied together so each can be toggled separately.
+        if (dopplerEnabled)
         {
-            Vector3 toEmitter = audioPos - _listener.transform.position;
-            float pitchShift;
+            float combinedShift = 1f;
 
-            if (toEmitter.sqrMagnitude > 0.0001f)
+            // 5a. Velocity-based Doppler — closing rate of the listener↔emitter gap.
+            //     Positive closingSpeed = distance shrinking = approaching = pitch up.
+            //     Using the scalar closing rate (rather than a listener velocity vector)
+            //     naturally captures movement of BOTH listener and emitter.
+            if (dopplerPitchEnabled && _prevDistanceToListener >= 0f)
             {
-                // Positive approachSpeed = listener moving toward emitter → pitch up
-                float approachSpeed = Vector3.Dot(
-                    AudioManager.Instance.ListenerVelocity, toEmitter.normalized);
-                pitchShift = 1f + (approachSpeed / AudioManager.PitchSoundSpeed)
-                                 * AudioManager.DopplerPitchStrength;
-                pitchShift = Mathf.Clamp(pitchShift, 0.5f, 2f);
-            }
-            else
-            {
-                pitchShift = 1f; // emitter is at the listener — no shift
+                float closingSpeed = (_prevDistanceToListener - DistanceToListener)
+                                     / Mathf.Max(Time.deltaTime, 0.0001f);
+                float velocityShift = 1f + (closingSpeed / Mathf.Max(dopplerPitchSoundSpeed, 0.001f))
+                                         * dopplerPitchStrength;
+                combinedShift *= Mathf.Clamp(velocityShift, 0.5f, 2f);
             }
 
-            if (dopplerEnabled && _proxySource != null)
-                _proxySource.pitch = _naturalPitch * pitchShift;
-            else
-                audioSource.pitch  = _naturalPitch * pitchShift;
+            // 5b. Distance-based pitch — higher when close, lower when far.
+            if (distancePitchEnabled)
+            {
+                float minD = audioSource.minDistance;
+                float maxD = audioSource.maxDistance;
+                float t    = (maxD > minD)
+                    ? Mathf.Clamp01((DistanceToListener - minD) / (maxD - minD))
+                    : 0f;
+                combinedShift *= Mathf.Lerp(pitchAtMinDistance, pitchAtMaxDistance, t);
+            }
+
+            float finalPitch = _naturalPitch * Mathf.Clamp(combinedShift, 0.5f, 2f);
+            CurrentPitch = finalPitch;
+            if (_proxySource != null)
+                _proxySource.pitch = finalPitch;
+            audioSource.pitch = finalPitch; // keep in sync even while muted via proxy
         }
         else
         {
-            // Global Doppler disabled — restore natural pitch
-            if (dopplerEnabled && _proxySource != null)
-                _proxySource.pitch = _naturalPitch;
-            else
-                audioSource.pitch  = _naturalPitch;
+            // Doppler disabled — restore natural pitch immediately
+            CurrentPitch      = _naturalPitch;
+            audioSource.pitch = _naturalPitch;
         }
+
+        // Record distance for next frame's closing-speed calculation
+        _prevDistanceToListener = DistanceToListener;
     }
 
     // ── Occlusion ─────────────────────────────────────────────────────────────

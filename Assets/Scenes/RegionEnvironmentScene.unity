@@ -3096,6 +3096,12 @@ MonoBehaviour:
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 1
+  distancePitchEnabled: 0
+  pitchAtMinDistance: 1.1
+  pitchAtMaxDistance: 0.9
 --- !u!1 &788572621
 GameObject:
   m_ObjectHideFlags: 0
@@ -3365,6 +3371,12 @@ MonoBehaviour:
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 1
+  distancePitchEnabled: 0
+  pitchAtMinDistance: 1.1
+  pitchAtMaxDistance: 0.9
 --- !u!114 &902104967
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4431,6 +4443,12 @@ MonoBehaviour:
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 1
+  distancePitchEnabled: 0
+  pitchAtMinDistance: 1.1
+  pitchAtMaxDistance: 0.9
 --- !u!114 &1140744944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4983,6 +5001,12 @@ MonoBehaviour:
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 1
+  distancePitchEnabled: 0
+  pitchAtMinDistance: 1.1
+  pitchAtMaxDistance: 0.9
 --- !u!1 &1251749145
 GameObject:
   m_ObjectHideFlags: 0
@@ -5779,7 +5803,13 @@ MonoBehaviour:
   dopplerEnabled: 1
   soundSpeed: 343
   maxDisplacementDistance: 15
-  dopplerExaggeration: 1
+  dopplerExaggeration: 0.8
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 0.1
+  distancePitchEnabled: 1
+  pitchAtMinDistance: 1.2
+  pitchAtMaxDistance: 0.8
 --- !u!114 &1531634684
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7109,6 +7139,12 @@ MonoBehaviour:
   soundSpeed: 343
   maxDisplacementDistance: 15
   dopplerExaggeration: 1
+  dopplerPitchEnabled: 1
+  dopplerPitchSoundSpeed: 30
+  dopplerPitchStrength: 1
+  distancePitchEnabled: 0
+  pitchAtMinDistance: 1.1
+  pitchAtMaxDistance: 0.9
 --- !u!1 &1966485307
 GameObject:
   m_ObjectHideFlags: 0
