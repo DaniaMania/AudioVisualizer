@@ -12,6 +12,9 @@ public class DebugEmitter : MonoBehaviour
     [SerializeField] private float minLineThickness = 2f;
     [SerializeField] private float maxLineThickness = 8f;
     [SerializeField] private float waveSpeed = 6f;
+    
+    [Header("UI Settings")]
+    public bool excludeFromUI = false;
 
     private AudioSource audioSource;
     private bool registrationPending = false;
@@ -56,6 +59,14 @@ public class DebugEmitter : MonoBehaviour
                 new GradientAlphaKey(1.0f, 1.0f)
             }
         );
+    }
+    
+    public static Color GetEmitterColor(int instanceID)
+    {
+        uint uid = (uint)Mathf.Abs(instanceID);
+        uid ^= uid >> 16; uid *= 0x45d9f3bu; uid ^= uid >> 16;
+        float hue = (uid % 360u) / 360f;
+        return Color.HSVToRGB(hue, 0.9f, 1f);
     }
 
     // Called by Unity when the component is first added in the editor — sets the

@@ -11,6 +11,7 @@ public class AudioDebugUI : MonoBehaviour
     private GUIStyle rowStyle;
     private GUIStyle buttonStyle;
     private GUIStyle boxStyle;
+    private GUIStyle colorSwatchStyle;
     private bool stylesInitialized = false;
 
     private const float WINDOW_X     = 10f;
@@ -51,10 +52,12 @@ public class AudioDebugUI : MonoBehaviour
             return;
 
         var emitters = AudioManager.Instance.ActiveEmitters;
-        int count = emitters.Count;
+        int count = 0;
+        foreach (var e in emitters)
+            if (e != null && !e.excludeFromUI) count++;
 
         float headerHeight = ROW_HEIGHT + PADDING * 2;
-        float rowsHeight   = Mathf.Max(count, 1) * ROW_HEIGHT + PADDING;
+        float rowsHeight = Mathf.Max(count, 1) * ROW_HEIGHT + PADDING;
         float windowHeight = headerHeight + rowsHeight + 4f;
         float windowY      = WINDOW_Y + 34f;
 
@@ -85,6 +88,7 @@ public class AudioDebugUI : MonoBehaviour
 
         // Separator
         GUI.Box(new Rect(WINDOW_X + PADDING, y - 2f, WINDOW_WIDTH - PADDING * 2f, 1f), GUIContent.none);
+        y += PADDING;
 
         if (count == 0)
         {
@@ -97,16 +101,22 @@ public class AudioDebugUI : MonoBehaviour
         }
 
         // Emitter rows
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < emitters.Count; i++)
         {
             DebugEmitter emitter = emitters[i];
             if (emitter == null) continue;
+            if (emitter.excludeFromUI) continue;
 
             AudioSource src = emitter.GetComponent<AudioSource>();
             if (src == null) continue;
 
             x = WINDOW_X + PADDING;
-            GUI.Label(new Rect(x, y, COL_NAME,  ROW_HEIGHT), emitter.gameObject.name,                        rowStyle); x += COL_NAME;
+            Color swatchColor = DebugEmitter.GetEmitterColor(emitter.gameObject.GetInstanceID());
+            GUI.color = swatchColor;
+            GUI.Box(new Rect(x, y + 3f, 14f, 14f), GUIContent.none, colorSwatchStyle);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(x + 18f, y, COL_NAME - 18f, ROW_HEIGHT), emitter.gameObject.name, rowStyle);
+            x += COL_NAME;
             GUI.Label(new Rect(x, y, COL_DIST,  ROW_HEIGHT), emitter.DistanceToListener.ToString("F1") + "m", rowStyle); x += COL_DIST;
             GUI.Label(new Rect(x, y, COL_VOL,   ROW_HEIGHT), emitter.EffectiveVolume.ToString("F2"),           rowStyle); x += COL_VOL;
             GUI.Label(new Rect(x, y, COL_BLEND, ROW_HEIGHT), src.spatialBlend.ToString("F2"),                  rowStyle); x += COL_BLEND;
@@ -134,5 +144,8 @@ public class AudioDebugUI : MonoBehaviour
         boxStyle = new GUIStyle(GUI.skin.box);
 
         stylesInitialized = true;
+        
+        colorSwatchStyle = new GUIStyle();
+        colorSwatchStyle.normal.background = Texture2D.whiteTexture;
     }
 }

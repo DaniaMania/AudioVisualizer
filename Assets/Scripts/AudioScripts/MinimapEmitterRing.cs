@@ -3,7 +3,6 @@ using UnityEngine;
 public class MinimapEmitterRing : MonoBehaviour
 {
     [Header("Ring Settings")]
-    public Color inRangeColor = Color.blue;
     public Color outOfRangeColor = Color.red;
 
     private LineRenderer pulseRing;
@@ -54,7 +53,9 @@ public class MinimapEmitterRing : MonoBehaviour
             horizontalRadius = Mathf.Sqrt(maxRadius * maxRadius - dy * dy);
 
         bool playerInRange = debugEmitter.DistanceToListener <= audioSource.maxDistance;
-        Color targetColor = playerInRange ? inRangeColor : outOfRangeColor;
+        Color targetColor = playerInRange
+            ? DebugEmitter.GetEmitterColor(gameObject.GetInstanceID())
+            : outOfRangeColor;
 
         if (isPulsing && horizontalRadius > 0f)
         {

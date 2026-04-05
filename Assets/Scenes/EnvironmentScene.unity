@@ -1818,6 +1818,7 @@ GameObject:
   - component: {fileID: 1092018177}
   - component: {fileID: 1092018176}
   - component: {fileID: 1092018175}
+  - component: {fileID: 1092018178}
   m_Layer: 0
   m_Name: AudioManager
   m_TagString: Untagged
@@ -1856,7 +1857,7 @@ MonoBehaviour:
   - label: Jump
     clip: {fileID: 8300000, guid: 1bdebad70382ea04fa5d3ff270cf9b7d, type: 3}
   - label: BirdChirp
-    clip: {fileID: 8300000, guid: e4f44cbc1d9cb0544ae07b4b3becc45b, type: 3}
+    clip: {fileID: 8300000, guid: 632beef01ff6ed2459fd05e893e6739d, type: 3}
 --- !u!4 &1092018177
 Transform:
   m_ObjectHideFlags: 0
@@ -1872,6 +1873,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1092018178
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1092018174}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b09ae1e3de6f42c4cb720ac93e219c7e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AudioVisualizer
+  ringRadius: 300
+  arcLength: 40
+  arcThickness: 8
+  arrowSize: 20
+  fadeOutDuration: 0.5
 --- !u!43 &1114784474
 Mesh:
   m_ObjectHideFlags: 0
@@ -2095,8 +2113,8 @@ GameObject:
   - component: {fileID: 1151049027}
   - component: {fileID: 1151049026}
   - component: {fileID: 1151049025}
-  - component: {fileID: 1151049024}
   - component: {fileID: 1151049029}
+  - component: {fileID: 1151049024}
   - component: {fileID: 1151049030}
   m_Layer: 0
   m_Name: Player
@@ -2387,6 +2405,7 @@ MonoBehaviour:
   minLineThickness: 2
   maxLineThickness: 8
   waveSpeed: 6
+  excludeFromUI: 1
 --- !u!1 &1251749145
 GameObject:
   m_ObjectHideFlags: 0
@@ -2822,6 +2841,7 @@ MonoBehaviour:
   minLineThickness: 2
   maxLineThickness: 8
   waveSpeed: 6
+  excludeFromUI: 0
 --- !u!114 &1510950513
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2988,7 +3008,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28549316587fddd4dbde44b7a2eaabfc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MinimapEmitterRing
-  inRangeColor: {r: 0, g: 0, b: 1, a: 1}
   outOfRangeColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &1536101884
 GameObject:

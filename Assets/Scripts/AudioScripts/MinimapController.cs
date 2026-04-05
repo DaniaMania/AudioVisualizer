@@ -27,6 +27,9 @@ public class MinimapController : MonoBehaviour
     {
         minimapCamera.orthographicSize = defaultZoom;
         overviewPosition = new Vector3(0, 100, 0);
+        minimapCamera.transform.SetParent(player);
+        minimapCamera.transform.localPosition = new Vector3(0, 50, 0);
+        minimapCamera.transform.localRotation = Quaternion.Euler(90, 0, 0);
     }
 
     void Update()
@@ -62,6 +65,8 @@ public class MinimapController : MonoBehaviour
     {
         isOverview = !isOverview;
 
+        
+        
         if (isOverview)
         {
             minimapCamera.transform.SetParent(null);
